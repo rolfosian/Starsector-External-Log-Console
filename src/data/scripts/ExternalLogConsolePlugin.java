@@ -11,15 +11,10 @@ import org.apache.log4j.PatternLayout;
 public class ExternalLogConsolePlugin extends BaseModPlugin {
     @Override
     public void onApplicationLoad() {
-        CustomConsoleAppender consoleAppender;
-
         if (Global.getSettings().getModManager().isModEnabled("lw_console")) {
-            consoleAppender = new CustomConsoleAppender(new CommandEnabledCustomConsoleWindow().postInit());
+            new CustomConsoleAppender(new CommandEnabledCustomConsoleWindow().preInit());
         } else {
-            consoleAppender = new CustomConsoleAppender(new CustomConsoleWindow().postInit());
+            new CustomConsoleAppender(new CustomConsoleWindow().preInit());
         }
-
-        consoleAppender.setLayout(new PatternLayout("%r [%t] %-5p %c - %m%n"));
-        Logger.getRootLogger().addAppender(consoleAppender);;
     }
 }

@@ -1,6 +1,9 @@
 package data.scripts;
 
 import org.apache.log4j.Logger;
+import org.apache.log4j.PatternLayout;
+
+import com.fs.starfarer.campaign.ui.d;
 
 import java.awt.Color;
 import java.awt.Component;
@@ -9,22 +12,33 @@ import java.awt.Font;
 import java.awt.Toolkit;
 
 import javax.swing.*;
+import javax.swing.border.BevelBorder;
 import javax.swing.text.BadLocationException;
 import javax.swing.text.Style;
 import javax.swing.text.StyleConstants;
 import javax.swing.text.StyledDocument;
+import javax.swing.text.Document;
 
 import java.awt.BorderLayout;
 import java.awt.event.ActionEvent;
 import java.awt.event.InputEvent;
+import java.awt.event.KeyAdapter;
 import java.awt.event.KeyEvent;
-
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
+import java.awt.event.WindowAdapter;
+import java.awt.event.WindowEvent;
 import java.util.List;
 import java.util.Map;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Arrays;
+import java.util.Set;
+import org.apache.log4j.spi.LoggingEvent;
 
 public class CustomConsoleWindow extends JFrame {
-    private static final Logger log = Logger.getLogger(TextMateGrammar.class);
+    public static final Logger log = Logger.getLogger(TextMateGrammar.class);
     
     private static TextMateGrammar grammar;
     
@@ -37,6 +51,7 @@ public class CustomConsoleWindow extends JFrame {
     }
 
     private JTextPane textPane;
+    protected JTextField inputField = null;
     private StyledDocument doc;
     private JDialog searchDialog;
     private JTextField searchField;
@@ -65,6 +80,9 @@ public class CustomConsoleWindow extends JFrame {
     private final java.util.List<TextSegment> segments = new java.util.ArrayList<>();
     private Map<Integer, Style> searchHighlights = new HashMap<>();
 
+    private final int MAX_LOG_ENTRIES = 5000;
+    private List<LoggingEvent> logEvents = new ArrayList<>();
+
     public CustomConsoleWindow() {
         setTitle("Log Console");
         setSize(800, 600);
@@ -80,7 +98,7 @@ public class CustomConsoleWindow extends JFrame {
         textPane = new JTextPane();
         textPane.setEditable(false);
         textPane.setBackground(new Color(30, 30, 30));
-        textPane.setFont(new Font("Monospaced", Font.PLAIN, 14));
+        textPane.setFont(new Font("Consolas", Font.PLAIN, 14));
 
         doc = textPane.getStyledDocument();
         defineStyles(doc);
@@ -146,10 +164,17 @@ public class CustomConsoleWindow extends JFrame {
         setupKeyBindings();
     }
 
-    public CustomConsoleWindow postInit() {
+    public CustomConsoleWindow preInit() {
         setExtendedState(getExtendedState() | java.awt.Frame.MAXIMIZED_BOTH);
         setVisible(true);
+        setupRightClickMenus();
         return this;
+    }
+
+    public void init(CustomConsoleAppender appender) {
+        this.appender = appender;
+        setPatternLayout();
+        Logger.getRootLogger().addAppender(appender);
     }
 
     private void defineStyles(StyledDocument doc) {
@@ -185,35 +210,34 @@ public class CustomConsoleWindow extends JFrame {
     }
 
     public void appendText(String text) {
-        SwingUtilities.invokeLater(() -> {
-            try {
-                JScrollBar verticalScrollBar = ((JScrollPane) textPane.getParent().getParent()).getVerticalScrollBar();
-                boolean atBottom = verticalScrollBar.getValue() + verticalScrollBar.getVisibleAmount() >= verticalScrollBar.getMaximum() - 20;
+        appendText(text, false);
+    }
+
+    public void appendText(LoggingEvent event) {
+        if (logEvents.size() >= MAX_LOG_ENTRIES) {
+            logEvents.remove(0);
+        }
+        logEvents.add(event);
+
+        String message = this.appender.getLayout().format(event);
+        appendText(message, false);
+    }
+
+    private void appendText(String text, boolean isRerender) {
+        try {
+            Document doc = textPane.getDocument();
+            JScrollBar verticalScrollBar = ((JScrollPane) textPane.getParent().getParent()).getVerticalScrollBar();
+            boolean atBottom = verticalScrollBar.getValue() + verticalScrollBar.getVisibleAmount() >= verticalScrollBar.getMaximum() - 20;
     
-                int start = doc.getLength();
-                
-                if (grammar != null) {
-                    applySyntaxHighlighting(text, start);
-                } else {
-                    Style styleToUse = defaultStyle;
-                    if (text.contains("ERROR")) {
-                        styleToUse = errorStyle;
-                    } else if (text.contains("WARN")) {
-                        styleToUse = warnStyle;
-                    } else if (text.contains("INFO")) {
-                        styleToUse = infoStyle;
-                    }
-                    doc.insertString(start, text, styleToUse);
-                    segments.add(new TextSegment(start, text.length(), styleToUse));
-                }
-    
-                if (atBottom) {
-                    textPane.setCaretPosition(doc.getLength());
-                }
-            } catch (BadLocationException e) {
-                log.error(e);
+            int start = doc.getLength();
+            applySyntaxHighlighting(text, start);
+
+            if (atBottom) {
+                textPane.setCaretPosition(doc.getLength());
             }
-        });
+        } catch (BadLocationException e) {
+            log.error(e);
+        }
     }
     
     public void clearConsole() {
@@ -385,11 +409,50 @@ public class CustomConsoleWindow extends JFrame {
         });
         prevButton.addActionListener(e -> navigateToPreviousMatch());
         nextButton.addActionListener(e -> navigateToNextMatch());
+
+        searchDialog.setDefaultCloseOperation(DO_NOTHING_ON_CLOSE);
+        searchDialog.addWindowListener(new WindowAdapter() {
+            @Override
+            public void windowClosing(WindowEvent e) {
+                clearHighlights();
+                searchDialog.setVisible(false);
+            }
+        });
+        searchDialog.addKeyListener(new KeyAdapter() {
+            public void keyPressed(KeyEvent e) {
+                int keyCode = e.getKeyCode();
+
+                switch(keyCode) {
+                    case KeyEvent.VK_ESCAPE:
+                        clearHighlights();
+                        searchDialog.setVisible(false);
+                        e.consume();
+                        return;
+                    
+                    default:
+                        return;
+                }
+            }
+        });
         
-        searchField.addKeyListener(new java.awt.event.KeyAdapter() {
-            public void keyPressed(java.awt.event.KeyEvent e) {
-                if (e.getKeyCode() == java.awt.event.KeyEvent.VK_ENTER) {
-                    findNext();
+        
+        searchField.addKeyListener(new KeyAdapter() {
+            public void keyPressed(KeyEvent e) {
+                int keyCode = e.getKeyCode();
+
+                switch(keyCode) {
+                    case KeyEvent.VK_ENTER:
+                        findNext();
+                        return;
+
+                    case KeyEvent.VK_ESCAPE:
+                        clearHighlights();
+                        searchDialog.setVisible(false);
+                        e.consume();
+                        return;
+
+                    default:
+                        return;
                 }
             }
         });
@@ -420,6 +483,199 @@ public class CustomConsoleWindow extends JFrame {
         return button;
     }
 
+    private CustomConsoleAppender appender;
+    private static String defaultPatternLayoutString = "%r [%t] %-5p %c - %m%n";
+    private String currentPatternLayoutString = "%r [%t] %-5p %c - %m%n";
+
+    private String[] layoutParamOrder = new String[] {
+        "%r",
+        "[%t]",
+        "%-5p",
+        "%c"
+    };
+
+    private Set<String> activeLayoutParams = new HashSet<>(Arrays.asList(layoutParamOrder));
+
+    private void rebuildPatternLayoutString() {
+        StringBuilder sb = new StringBuilder();
+        for (String param : layoutParamOrder) {
+            if (activeLayoutParams.contains(param)) {
+                sb.append(param).append(" ");
+            }
+        }
+        sb.append("- %m%n");
+        currentPatternLayoutString = sb.toString();
+    }
+
+    private void insertLayoutParam(String param) {
+        activeLayoutParams.add(param);
+        rebuildPatternLayoutString();
+    }
+
+    private void removeLayoutParam(String param) {
+        activeLayoutParams.remove(param);
+        rebuildPatternLayoutString();
+    }
+
+    public void setPatternLayout() {
+        this.appender.setLayout(new PatternLayout(currentPatternLayoutString));
+    }
+
+    private void rerenderLogMessages() {
+        textPane.setText("");
+        for (LoggingEvent event : logEvents) {
+            String message = this.appender.getLayout().format(event);
+            appendText(message, false);
+        }
+    }
+
+    private void setupRightClickMenus() {
+        JPopupMenu textPanePopupMenu = new JPopupMenu();
+        textPanePopupMenu.setBackground(new Color(30, 30, 30));
+        textPanePopupMenu.setForeground(Color.WHITE);
+        textPanePopupMenu.setFont(new Font("Consolas", Font.PLAIN, 14));
+
+        JMenuItem copyItem = new JMenuItem("Copy");
+        copyItem.addActionListener(e -> textPane.copy());
+        copyItem.setBackground(new Color(30, 30, 30));
+        copyItem.setForeground(Color.WHITE);
+        copyItem.setFont(new Font("Consolas", Font.PLAIN, 14));
+        textPanePopupMenu.add(copyItem);
+
+        if (inputField != null) {
+            JMenuItem pasteItem = new JMenuItem("Paste");
+            pasteItem.addActionListener(e -> {
+                inputField.paste();
+                inputField.requestFocus();
+            });
+
+            pasteItem.setBackground(new Color(30, 30, 30));
+            pasteItem.setForeground(Color.WHITE);
+            pasteItem.setFont(new Font("Consolas", Font.PLAIN, 14));
+            textPanePopupMenu.add(pasteItem);            
+
+            JPopupMenu inputFieldPopupMenu = new JPopupMenu();
+            inputFieldPopupMenu.setBackground(new Color(30, 30, 30));
+            inputFieldPopupMenu.setForeground(Color.WHITE);
+            inputFieldPopupMenu.setFont(new Font("Consolas", Font.PLAIN, 14));
+
+            AbstractButton[] items = new AbstractButton[2];
+
+            JMenuItem inputCopyItem = new JMenuItem("Copy");
+            inputCopyItem.addActionListener(e -> textPane.copy());
+            items[0] = inputCopyItem;
+
+            JMenuItem inputPasteItem = new JMenuItem("Paste");
+            inputPasteItem.addActionListener(e -> {
+                inputField.paste();
+                inputField.requestFocus();
+            });
+            items[1] = inputPasteItem;
+
+            for (AbstractButton item : items) {
+                item.setBackground(new Color(30, 30, 30));
+                item.setForeground(Color.WHITE);
+                item.setFont(new Font("Consolas", Font.PLAIN, 14));
+                inputFieldPopupMenu.add(item);
+            }
+
+            inputField.addMouseListener(new MouseAdapter() {
+                public void mousePressed(MouseEvent e) {
+                    if (e.isPopupTrigger())
+                    inputFieldPopupMenu.show(e.getComponent(), e.getX(), e.getY());
+                }
+    
+                public void mouseReleased(MouseEvent e) {
+                    if (e.isPopupTrigger())
+                    inputFieldPopupMenu.show(e.getComponent(), e.getX(), e.getY());
+                }
+            });
+        }
+
+        textPanePopupMenu.addSeparator();
+
+        AbstractButton[] items = new AbstractButton[4];
+        
+        JCheckBoxMenuItem showlogTimeToggle = new JCheckBoxMenuItem("Show log time");
+        showlogTimeToggle.setSelected(true);
+        showlogTimeToggle.addActionListener(e -> {
+            boolean on = showlogTimeToggle.isSelected();
+
+            if (on) {
+                insertLayoutParam("%r");
+            } else {
+                removeLayoutParam("%r");
+            }
+            setPatternLayout();
+            rerenderLogMessages();
+        });
+        items[0] = showlogTimeToggle;
+
+        JCheckBoxMenuItem showlogThreadToggle = new JCheckBoxMenuItem("Show log thread");
+        showlogThreadToggle.setSelected(true);
+        showlogThreadToggle.addActionListener(e -> {
+            boolean on = showlogThreadToggle.isSelected();
+
+            if (on) {
+                insertLayoutParam("[%t]");
+            } else {
+                removeLayoutParam("[%t]");
+            }
+            setPatternLayout();
+            rerenderLogMessages();
+        });
+        items[1] = showlogThreadToggle;
+
+        JCheckBoxMenuItem showLogLevelToggle = new JCheckBoxMenuItem("Show log level");
+        showLogLevelToggle.setSelected(true);
+        showLogLevelToggle.addActionListener(e -> {
+            boolean on = showLogLevelToggle.isSelected();
+
+            if (on) {
+                insertLayoutParam("%-5p");
+            } else {
+                removeLayoutParam("%-5p");
+            }
+            setPatternLayout();
+            rerenderLogMessages();
+        });
+        items[2] = showLogLevelToggle;
+
+        JCheckBoxMenuItem showCategoryToggle = new JCheckBoxMenuItem("Show log category (class)");
+        showCategoryToggle.setSelected(true);
+        showCategoryToggle.addActionListener(e -> {
+            boolean on = showCategoryToggle.isSelected();
+
+            if (on) {
+                insertLayoutParam("%c");
+            } else {
+                removeLayoutParam("%c");
+            }
+            setPatternLayout();
+            rerenderLogMessages();
+        });
+        items[3] = showCategoryToggle;
+
+        for (AbstractButton item : items) {
+            item.setBackground(new Color(30, 30, 30));
+            item.setForeground(Color.WHITE);
+            item.setFont(new Font("Consolas", Font.PLAIN, 14));
+            textPanePopupMenu.add(item);
+        }
+
+        textPane.addMouseListener(new MouseAdapter() {
+            public void mousePressed(MouseEvent e) {
+                if (e.isPopupTrigger())
+                textPanePopupMenu.show(e.getComponent(), e.getX(), e.getY());
+            }
+
+            public void mouseReleased(MouseEvent e) {
+                if (e.isPopupTrigger())
+                textPanePopupMenu.show(e.getComponent(), e.getX(), e.getY());
+            }
+        });
+    }
+
     private void setupKeyBindings() {
         KeyStroke ctrlF = KeyStroke.getKeyStroke(KeyEvent.VK_F, InputEvent.CTRL_DOWN_MASK);
         textPane.getInputMap(JComponent.WHEN_IN_FOCUSED_WINDOW).put(ctrlF, "search");
@@ -428,6 +684,9 @@ public class CustomConsoleWindow extends JFrame {
             public void actionPerformed(ActionEvent e) {
                 searchDialog.setVisible(true);
                 searchField.requestFocus();
+                if (!searchField.getText().isEmpty()) {
+                    highlightAllMatches(searchField.getText());
+                }
             }
         });
     }
@@ -484,7 +743,6 @@ public class CustomConsoleWindow extends JFrame {
             while ((index = content.indexOf(search, index)) != -1) {
                 matchPositions.add(index);
                 
-
                 for (int i = 0; i < searchText.length(); i++) {
                     int position = index + i;
                     Style originalStyle = findOriginalStyle(position);
@@ -529,6 +787,11 @@ public class CustomConsoleWindow extends JFrame {
 
     private void navigateToNextMatch() {
         if (matchPositions.isEmpty()) return;
+        boolean isFocused = false;
+        if (!textPane.isFocusOwner()) {
+            isFocused = true;
+            textPane.requestFocus(true);
+        }
         
         currentMatchIndex = (currentMatchIndex + 1) % matchPositions.size();
         int position = matchPositions.get(currentMatchIndex);
@@ -536,6 +799,9 @@ public class CustomConsoleWindow extends JFrame {
         textPane.setSelectionStart(position);
         textPane.setSelectionEnd(position + searchField.getText().length());
         updateMatchCounter();
+        if (isFocused) {
+            searchField.requestFocus();
+        }
     }
 
     private void navigateToPreviousMatch() {
@@ -564,6 +830,8 @@ public class CustomConsoleWindow extends JFrame {
         applyDarkTheme(dialog.getRootPane());
     
         dialog.setVisible(true);
+
+        return;
     }
     
     private void applyDarkTheme(Container container) {
@@ -593,6 +861,7 @@ public class CustomConsoleWindow extends JFrame {
     
             if (matchPositions.isEmpty()) {
                 showDarkThemedMessage("Text not found", "Search Result");
+                searchField.requestFocus();
                 return;
             }
     

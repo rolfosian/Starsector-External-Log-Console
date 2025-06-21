@@ -1,5 +1,5 @@
 package org.lazywizard.console;
-// Code taken and modified from console commands
+// Code taken and modified from Lazywizard's Console Commands
 
 import java.util.*;
 
@@ -16,7 +16,7 @@ import org.lazywizard.console.BaseCommand.CommandContext;
 import org.lazywizard.lazylib.StringUtils;
 
 public class CustomConsoleListeners {
-    private static Logger logger = Global.getLogger(Console.class);
+    private static Logger logger = Logger.getLogger(Console.class);
 
     public static class ConsoleCampaignListener implements CampaignInputListener, ConsoleListener  {
         @Override

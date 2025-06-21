@@ -8,12 +8,12 @@ public class CustomConsoleAppender extends AppenderSkeleton {
 
     public CustomConsoleAppender(CustomConsoleWindow windowInstance) {
         this.windowInstance = windowInstance;
+        this.windowInstance.init(this);
     }
 
     @Override
     public void append(LoggingEvent event) {
-        String message = this.layout.format(event);
-        windowInstance.appendText(message);
+        windowInstance.appendText(event);
     }
 
     @Override

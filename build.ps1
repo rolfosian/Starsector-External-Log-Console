@@ -29,12 +29,11 @@ $dependencies = @(
     "../../starsector-core/fs.sound_obf.jar",
     
     "../../starsector-core/json.jar",
-    "../../starsector-core/json.jar",
     "../../starsector-core/jinput.jar",
     "../../starsector-core/log4j-1.2.9.jar",
     "../../starsector-core/lwjgl.jar",
     "../../starsector-core/lwjgl_util.jar",
-    "../../mods/Console Commands/jars/lw_Console.jar"
+    "../../mods/Console Commands/jars/lw_Console.jar",
     "../../mods/LazyLib/jars/LazyLib.jar"
 
 )
