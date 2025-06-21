@@ -126,7 +126,7 @@
       "name": "constant.language log.constant"
     },
     {
-      "match" : "(?<=org\\.lazywizard\\.console\\.Console\\s*-\\s*).*\\b",
+      "match": "(?<=org\\.lazywizard\\.console\\.Console\\s*-)\\s*(.*)",
       "name" : "lw_console"
     }
   ]

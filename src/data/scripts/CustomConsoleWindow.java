@@ -484,7 +484,6 @@ public class CustomConsoleWindow extends JFrame {
     }
 
     private CustomConsoleAppender appender;
-    private static String defaultPatternLayoutString = "%r [%t] %-5p %c - %m%n";
     private String currentPatternLayoutString = "%r [%t] %-5p %c - %m%n";
 
     private String[] layoutParamOrder = new String[] {

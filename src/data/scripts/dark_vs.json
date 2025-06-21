@@ -32,6 +32,12 @@
   },
   "tokenColors": [
     {
+      "scope": "lw_console",
+      "settings": {
+        "foreground" : "#01DFE0"
+      }
+    },
+    {
       "scope": [
         "meta.embedded",
         "source.groovy.embedded",
@@ -417,12 +423,6 @@
         "foreground": "#ce9178"
       }
     },
-    {
-      "scope": "lw_console",
-      "settings": {
-        "foreground" : "#01DFE0"
-      }
-    }
   ],
   "semanticHighlighting": true,
   "semanticTokenColors": {

@@ -10,6 +10,9 @@ import java.util.regex.*;
 public class TextMateGrammar {
     private static final Logger log = Logger.getLogger(TextMateGrammar.class);
     
+    private static Map<String, Pattern> patternCache = new HashMap<>();
+    private static JSONObject cachedGrammar = null;
+    
     private JSONObject grammar;
     private JSONObject theme;
     public Map<String, StyleInfo> scopeToStyle = new HashMap<>();
@@ -42,6 +45,10 @@ public class TextMateGrammar {
             
             String content = new String(is.readAllBytes(), StandardCharsets.UTF_8);
             grammar = new JSONObject(content);
+            
+            // Cache patterns when grammar is loaded
+            cachePatterns();
+            
             log.info("Successfully loaded log grammar");
         } catch (Exception e) {
             log.error("Error loading grammar: " + e.getMessage(), e);
@@ -96,6 +103,77 @@ public class TextMateGrammar {
         }
     }
     
+    private void cachePatterns() {
+        if (grammar == null) return;
+
+        if (cachedGrammar == grammar) return;
+        
+        patternCache.clear();
+        cachedGrammar = grammar;
+        
+        try {
+            JSONArray patterns = grammar.getJSONArray("patterns");
+            cachePatternsRecursive(patterns);
+            log.info("Cached " + patternCache.size() + " regex patterns");
+        } catch (Exception e) {
+            log.error("Error caching patterns: " + e.getMessage(), e);
+        }
+    }
+    
+    private void cachePatternsRecursive(JSONArray patterns) {
+        for (int i = 0; i < patterns.length(); i++) {
+            try {
+                JSONObject pattern = patterns.getJSONObject(i);
+                
+                if (pattern.has("match")) {
+                    String regex = pattern.getString("match");
+                    String cleanedRegex = cleanRegexPattern(regex);
+                    if (!patternCache.containsKey(cleanedRegex)) {
+                        try {
+                            Pattern p = Pattern.compile(cleanedRegex);
+                            patternCache.put(cleanedRegex, p);
+                        } catch (PatternSyntaxException e) {
+                            log.warn("Invalid regex pattern at index " + i + ": " + regex + " - " + e.getMessage());
+                        }
+                    }
+                }
+                
+                if (pattern.has("begin") && pattern.has("end")) {
+                    String beginRegex = pattern.getString("begin");
+                    String endRegex = pattern.getString("end");
+                    
+                    String cleanedBeginRegex = cleanRegexPattern(beginRegex);
+                    String cleanedEndRegex = cleanRegexPattern(endRegex);
+                    
+                    if (!patternCache.containsKey(cleanedBeginRegex)) {
+                        try {
+                            Pattern beginPattern = Pattern.compile(cleanedBeginRegex);
+                            patternCache.put(cleanedBeginRegex, beginPattern);
+                        } catch (PatternSyntaxException e) {
+                            log.warn("Invalid begin regex pattern at index " + i + ": " + beginRegex + " - " + e.getMessage());
+                        }
+                    }
+                    
+                    if (!patternCache.containsKey(cleanedEndRegex)) {
+                        try {
+                            Pattern endPattern = Pattern.compile(cleanedEndRegex);
+                            patternCache.put(cleanedEndRegex, endPattern);
+                        } catch (PatternSyntaxException e) {
+                            log.warn("Invalid end regex pattern at index " + i + ": " + endRegex + " - " + e.getMessage());
+                        }
+                    }
+                }
+                
+                if (pattern.has("patterns")) {
+                    cachePatternsRecursive(pattern.getJSONArray("patterns"));
+                }
+                
+            } catch (JSONException e) {
+                log.warn("Error parsing pattern at index " + i + ": " + e.getMessage());
+            }
+        }
+    }
+    
     public List<MatchResult> parseLine(String line) {
         List<MatchResult> allResults = new ArrayList<>();
         if (grammar == null) return allResults;
@@ -103,8 +181,8 @@ public class TextMateGrammar {
         try {
             JSONArray patterns = grammar.getJSONArray("patterns");
             parsePatterns(patterns, line, 0, allResults);
-            
-            return filterOverlappingMatches(allResults);
+
+            return allResults;            
         } catch (Exception e) {
             log.error("Error parsing line: " + e.getMessage(), e);
         }
@@ -121,9 +199,10 @@ public class TextMateGrammar {
                     String regex = pattern.getString("match");
                     String name = pattern.optString("name", "");
                     
-                    try {
-                        String cleanedRegex = cleanRegexPattern(regex);
-                        Pattern p = Pattern.compile(cleanedRegex);
+                    String cleanedRegex = cleanRegexPattern(regex);
+                    Pattern p = patternCache.get(cleanedRegex);
+                    
+                    if (p != null) {
                         Matcher m = p.matcher(line);
                         
                         while (m.find()) {
@@ -131,8 +210,6 @@ public class TextMateGrammar {
                             int end = m.end();
                             results.add(new MatchResult(start, end - start, name, m.group()));
                         }
-                    } catch (PatternSyntaxException e) {
-                        log.warn("Invalid regex pattern at index " + i + ": " + regex + " - " + e.getMessage());
                     }
                 }
                 
@@ -141,12 +218,13 @@ public class TextMateGrammar {
                     String endRegex = pattern.getString("end");
                     String name = pattern.optString("name", "");
                     
-                    try {
-                        String cleanedBeginRegex = cleanRegexPattern(beginRegex);
-                        String cleanedEndRegex = cleanRegexPattern(endRegex);
-                        Pattern beginPattern = Pattern.compile(cleanedBeginRegex);
-                        Pattern endPattern = Pattern.compile(cleanedEndRegex);
-                        
+                    String cleanedBeginRegex = cleanRegexPattern(beginRegex);
+                    String cleanedEndRegex = cleanRegexPattern(endRegex);
+                    
+                    Pattern beginPattern = patternCache.get(cleanedBeginRegex);
+                    Pattern endPattern = patternCache.get(cleanedEndRegex);
+                    
+                    if (beginPattern != null && endPattern != null) {
                         Matcher beginMatcher = beginPattern.matcher(line);
                         while (beginMatcher.find()) {
                             int beginStart = beginMatcher.start();
@@ -163,70 +241,17 @@ public class TextMateGrammar {
                                     line.substring(beginStart, endEnd)));
                             }
                         }
-                    } catch (PatternSyntaxException e) {
-                        log.warn("Invalid regex pattern at index " + i + ": begin=" + beginRegex + ", end=" + endRegex + " - " + e.getMessage());
                     }
                 }
+                
+                if (pattern.has("patterns")) {
+                    parsePatterns(pattern.getJSONArray("patterns"), line, startPos, results);
+                }
+                
             } catch (JSONException e) {
                 log.warn("Error parsing pattern at index " + i + ": " + e.getMessage());
             }
         }
-    }
-    
-    private List<MatchResult> filterOverlappingMatches(List<MatchResult> allResults) {
-        if (allResults.isEmpty()) return allResults;
-        
-        // Sort by priority: strings first, then other patterns
-        allResults.sort((a, b) -> {
-            boolean aIsString = a.scope.contains("string") && !a.scope.contains("regexp");
-            boolean bIsString = b.scope.contains("string") && !b.scope.contains("regexp");
-            
-            if (aIsString && !bIsString) return -1;
-            if (!aIsString && bIsString) return 1;
-            
-            return Integer.compare(a.start, b.start);
-        });
-        
-        List<MatchResult> filteredResults = new ArrayList<>();
-        
-        for (MatchResult current : allResults) {
-            boolean shouldAdd = true;
-            
-            for (MatchResult existing : filteredResults) {
-                if (overlaps(current, existing)) {
-                    boolean currentIsString = current.scope.contains("string") && !current.scope.contains("regexp");
-                    boolean existingIsString = existing.scope.contains("string") && !existing.scope.contains("regexp");
-                    
-                    if (currentIsString && !existingIsString) {
-                        filteredResults.remove(existing);
-                        break;
-
-                    } else if (!currentIsString && existingIsString) {
-                        shouldAdd = false;
-                        break;
-
-                    } else {
-                        shouldAdd = false;
-                        break;
-                    }
-                }
-            }
-            
-            if (shouldAdd) {
-                filteredResults.add(current);
-            }
-        }
-        
-        return filteredResults;
-    }
-    
-    private boolean overlaps(MatchResult a, MatchResult b) {
-        int aStart = a.start;
-        int aEnd = a.start + a.length;
-        int bStart = b.start;
-        int bEnd = b.start + b.length;
-        
-        return aStart < bEnd && bStart < aEnd;
     }
     
     public StyleInfo getStyleForScope(String scope) {
@@ -331,3 +356,4 @@ public class TextMateGrammar {
         log.info("Syntax highlighting test completed successfully!");
     }
 }
+

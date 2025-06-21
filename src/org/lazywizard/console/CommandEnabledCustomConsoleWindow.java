@@ -1,6 +1,7 @@
 package org.lazywizard.console;
 
 import data.scripts.CustomConsoleWindow;
+import data.scripts.TextMateGrammar.StyleInfo;
 
 import org.apache.log4j.PatternLayout;
 import org.lazywizard.console.CustomConsoleListeners.ConsoleCampaignListener;
@@ -17,9 +18,13 @@ import java.awt.Color;
 import java.awt.Font;
 import java.awt.KeyboardFocusManager;
 import java.awt.event.KeyEvent;
+import java.awt.event.KeyListener;
+import java.util.*;
 
 public class CommandEnabledCustomConsoleWindow extends CustomConsoleWindow {
-    // private JTextField inputField;
+    private List<String> inputHistory = new ArrayList<>();
+    private int historyIndex = -1;
+    private String currentInput = "";
 
     public CommandEnabledCustomConsoleWindow() {
         super();
@@ -29,8 +34,24 @@ public class CommandEnabledCustomConsoleWindow extends CustomConsoleWindow {
         inputField.addActionListener(e -> {
             String command = inputField.getText();
             if (!command.trim().isEmpty()) {
-                if (command.toLowerCase().equals("clear")) {
-                    this.clearConsole();
+                
+                // Add command to history
+                addToHistory(command);
+                
+                switch (command.toLowerCase()) {
+                    case "clear":
+                        this.clearConsole();
+                        break;
+                    
+                    case"printgrammar":
+                        for (Map.Entry<String, StyleInfo> entry : getGrammar().scopeToStyle.entrySet()) {
+                            log.info(entry.getKey() + " " + entry.getValue().foreground);
+                        }
+                        inputField.setText("");
+                        return;
+
+                    default:
+                        break;
                 }
 
                 parseInput(command);
@@ -38,11 +59,31 @@ public class CommandEnabledCustomConsoleWindow extends CustomConsoleWindow {
             }
         });
 
+        // Add key listener for history navigation
+        inputField.addKeyListener(new KeyListener() {
+            @Override
+            public void keyTyped(KeyEvent e) {}
+
+            @Override
+            public void keyPressed(KeyEvent e) {
+                if (e.getKeyCode() == KeyEvent.VK_UP) {
+                    navigateHistoryUp();
+                    e.consume();
+                } else if (e.getKeyCode() == KeyEvent.VK_DOWN) {
+                    navigateHistoryDown();
+                    e.consume();
+                }
+            }
+
+            @Override
+            public void keyReleased(KeyEvent e) {}
+        });
+
         inputField.setBackground(new Color(30, 30, 30));
         inputField.setForeground(Color.WHITE);
         inputField.setCaretColor(Color.WHITE);
         inputField.setBorder(BorderFactory.createCompoundBorder(
-            BorderFactory.createLineBorder(new Color(0, 0, 0)),
+            BorderFactory.createLineBorder(new Color(100, 100, 100)),
             BorderFactory.createEmptyBorder(2, 5, 2, 5)
         ));
 
@@ -80,6 +121,55 @@ public class CommandEnabledCustomConsoleWindow extends CustomConsoleWindow {
 
         this.revalidate();
         this.repaint();
+    }
+
+    private void addToHistory(String command) {
+        if (command.trim().isEmpty()) {
+            return;
+        }
+        
+        if (!inputHistory.isEmpty() && inputHistory.get(inputHistory.size() - 1).equals(command)) {
+            return;
+        }
+        
+        inputHistory.add(command);
+        if (inputHistory.size() > 100) {
+            inputHistory.remove(0);
+        }
+
+        historyIndex = -1;
+    }
+
+    private void navigateHistoryUp() {
+        if (inputHistory.isEmpty()) {
+            return;
+        }
+        
+        if (historyIndex == -1) {
+            currentInput = inputField.getText();
+        }
+        
+        if (historyIndex < inputHistory.size() - 1) {
+            historyIndex++;
+            inputField.setText(inputHistory.get(inputHistory.size() - 1 - historyIndex));
+            inputField.setCaretPosition(inputField.getText().length());
+        }
+    }
+
+    private void navigateHistoryDown() {
+        if (inputHistory.isEmpty()) {
+            return;
+        }
+        
+        if (historyIndex > 0) {
+            historyIndex--;
+            inputField.setText(inputHistory.get(inputHistory.size() - 1 - historyIndex));
+            inputField.setCaretPosition(inputField.getText().length());
+        } else if (historyIndex == 0) {
+            historyIndex = -1;
+            inputField.setText(currentInput);
+            inputField.setCaretPosition(inputField.getText().length());
+        }
     }
 
     private void parseInput(String command) {
