@@ -1,0 +1,11 @@
+{
+    "id": "external_log_console",
+    "name": "External Log Console",
+    "author": "rolfos",
+    "version": "0.0.1",
+    "description": "Simple console in a separate window for starsector.log with basic syntax highlighting",
+    "gameVersion": "0.98a-RC8",
+    "modPlugin": "data.scripts.ExternalLogConsolePlugin",
+    "jars": ["./jars/ExternalLogConsoleJAR.jar"]
+  }
+  
