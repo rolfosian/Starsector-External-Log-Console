@@ -33,6 +33,7 @@ import java.util.HashSet;
 import java.util.Arrays;
 import java.util.Set;
 import org.apache.log4j.spi.LoggingEvent;
+
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -62,9 +63,10 @@ public class CustomConsoleWindow extends JFrame {
 
     private Style infoStyle, warnStyle, errorStyle, defaultStyle;
 
-    private final ExecutorService syntaxHighlightExecutor = Executors.newSingleThreadExecutor();
+    private ExecutorService syntaxHighlightExecutor = Executors.newSingleThreadExecutor();
+    private final ExecutorService statusExecutor = Executors.newSingleThreadExecutor();
 
-    private static class TextSegment {
+    public static class TextSegment {
         int start;
         int length;
         Style style;
@@ -211,33 +213,32 @@ public class CustomConsoleWindow extends JFrame {
         return grammar;
     }
 
+    public StyledDocument getDoc() {
+        return doc;
+    }
+
     public void appendText(String text) {
         try {
             Document doc = textPane.getDocument();
             JScrollBar verticalScrollBar = ((JScrollPane) textPane.getParent().getParent()).getVerticalScrollBar();
             boolean atBottom = verticalScrollBar.getValue() + verticalScrollBar.getVisibleAmount() >= verticalScrollBar.getMaximum() - 20;
-    
-            // Check line count and remove lines if necessary
+
             int lineCount = getLineCount();
             if (lineCount >= MAX_LINES) {
                 removeExcessLines(lineCount - MAX_LINES + 1);
             }
     
             int start = doc.getLength();
-            
-            // First, add the text with default styling immediately
             doc.insertString(start, text, defaultStyle);
             
-            // Create a segment for tracking
             TextSegment segment = new TextSegment(start, text.length(), defaultStyle);
             segments.add(segment);
 
             if (atBottom) {
                 textPane.setCaretPosition(doc.getLength());
             }
-            
-            // Apply syntax highlighting in background thread
             applySyntaxHighlightingAsync(text, start, segment);
+
         } catch (BadLocationException e) {
             log.error(e);
         }
@@ -250,40 +251,25 @@ public class CustomConsoleWindow extends JFrame {
         logEvents.add(event);
 
         String message = this.appender.getLayout().format(event);
+
         appendText(message);
+
+        if (event.getThrowableInformation() != null) {
+            String stackTrace = "";
+            for (String str : event.getThrowableInformation().getThrowableStrRep()) {
+                stackTrace += str + "\n";
+            }
+            appendText(stackTrace);
+        }
     }
 
     private void applySyntaxHighlightingAsync(String text, int startOffset, TextSegment segment) {
         syntaxHighlightExecutor.submit(() -> {
-            try {
-                List<TextMateGrammar.MatchResult> matches = grammar.parseLine(text);
-                matches.sort((a, b) -> Integer.compare(a.start, b.start));
-                
-                // Apply highlighting on EDT to avoid threading issues
-                SwingUtilities.invokeLater(() -> {
-                    try {
-                        for (TextMateGrammar.MatchResult match : matches) {
-                            Style style = createStyleFromScope(match.scope);
-                            if (style != null) {
-                                int absoluteStart = startOffset + match.start;
-                                doc.setCharacterAttributes(absoluteStart, match.length, style, true);
-                                
-                                for (int i = 0; i < match.length; i++) {
-                                    segment.syntaxHighlights.put(absoluteStart + i, style);
-                                }
-                            }
-                        }
-                    } catch (Exception e) {
-                        log.error("Error applying syntax highlighting: " + e.getMessage(), e);
-                    }
-                });
-            } catch (Exception e) {
-                log.error("Error in syntax highlighting thread: " + e.getMessage(), e);
-            }
+            grammar.parseLine(text, this, segment, startOffset);
         });
     }
     
-    private Style createStyleFromScope(String scope) {
+    protected Style createStyleFromScope(String scope) {
         if (grammar == null || scope == null || scope.isEmpty()) {
             return defaultStyle;
         }
@@ -506,7 +492,7 @@ public class CustomConsoleWindow extends JFrame {
                 sb.append(param).append(" ");
             }
         }
-        sb.append("- %m%n");
+        sb.append("- %m%n%");
         currentPatternLayoutString = sb.toString();
     }
 
@@ -525,12 +511,16 @@ public class CustomConsoleWindow extends JFrame {
     }
 
     private void rerenderLogMessages() {
-        textPane.setText("");
-        segments.clear();
-        for (LoggingEvent event : logEvents) {
-            String message = this.appender.getLayout().format(event);
-            appendText(message);
-        }
+        syntaxHighlightExecutor.submit(() -> {
+            textPane.setText("");
+            segments.clear();
+
+            for (int i = logEvents.size() - 1; i >= 0; i--) {
+                LoggingEvent event = logEvents.get(i);
+                String message = this.appender.getLayout().format(event);
+                appendText(message);
+            }
+        });
     }
 
     private void setupRightClickMenus() {
@@ -556,7 +546,7 @@ public class CustomConsoleWindow extends JFrame {
             pasteItem.setBackground(new Color(30, 30, 30));
             pasteItem.setForeground(Color.WHITE);
             pasteItem.setFont(new Font("Consolas", Font.PLAIN, 14));
-            textPanePopupMenu.add(pasteItem);            
+            textPanePopupMenu.add(pasteItem);
 
             JPopupMenu inputFieldPopupMenu = new JPopupMenu();
             inputFieldPopupMenu.setBackground(new Color(30, 30, 30));
@@ -893,6 +883,7 @@ public class CustomConsoleWindow extends JFrame {
                 searchHighlights.clear();
                 matchPositions.clear();
                 currentMatchIndex = 0;
+                logEvents.clear();
                 updateMatchCounter();
             } catch (BadLocationException e) {
                 log.error(e);
@@ -903,6 +894,9 @@ public class CustomConsoleWindow extends JFrame {
     public void dispose() {
         if (syntaxHighlightExecutor != null && !syntaxHighlightExecutor.isShutdown()) {
             syntaxHighlightExecutor.shutdown();
+        }
+        if (statusExecutor != null && !statusExecutor.isShutdown()) {
+            statusExecutor.shutdown();
         }
         super.dispose();
     }
@@ -922,27 +916,21 @@ public class CustomConsoleWindow extends JFrame {
             String[] lines = text.split("\n", -1);
             
             if (lines.length <= linesToRemove) {
-                // If we need to remove more lines than we have, just clear everything
                 doc.remove(0, doc.getLength());
                 segments.clear();
                 return;
             }
             
-            // Calculate the position where we need to start keeping text
             final int startPosition = calculateStartPosition(lines, linesToRemove);
             
-            // Remove the text and update segments
             doc.remove(0, startPosition);
             
-            // Update segments - remove segments that are completely before the removal point
             segments.removeIf(segment -> segment.start + segment.length <= startPosition);
             
-            // Adjust start positions of remaining segments
             for (TextSegment segment : segments) {
                 segment.start -= startPosition;
             }
             
-            // Update search highlights
             Map<Integer, Style> newSearchHighlights = new HashMap<>();
             for (Map.Entry<Integer, Style> entry : searchHighlights.entrySet()) {
                 int position = entry.getKey();
@@ -952,7 +940,6 @@ public class CustomConsoleWindow extends JFrame {
             }
             searchHighlights = newSearchHighlights;
             
-            // Update match positions
             for (int i = 0; i < matchPositions.size(); i++) {
                 int position = matchPositions.get(i);
                 if (position >= startPosition) {
@@ -976,29 +963,5 @@ public class CustomConsoleWindow extends JFrame {
             lineCount++;
         }
         return startPosition;
-    }
-    
-    private void applySyntaxHighlighting(String text, int startOffset) throws BadLocationException {
-        doc.insertString(startOffset, text, defaultStyle);
-        
-        TextSegment segment = new TextSegment(startOffset, text.length(), defaultStyle);
-        
-        List<TextMateGrammar.MatchResult> matches = grammar.parseLine(text);
-        
-        matches.sort((a, b) -> Integer.compare(a.start, b.start));
-        
-        for (TextMateGrammar.MatchResult match : matches) {
-            Style style = createStyleFromScope(match.scope);
-            if (style != null) {
-                int absoluteStart = startOffset + match.start;
-                doc.setCharacterAttributes(absoluteStart, match.length, style, true);
-                
-                for (int i = 0; i < match.length; i++) {
-                    segment.syntaxHighlights.put(absoluteStart + i, style);
-                }
-            }
-        }
-        
-        segments.add(segment);
     }
 }

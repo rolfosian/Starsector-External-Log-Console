@@ -5,6 +5,7 @@ import data.scripts.TextMateGrammar.StyleInfo;
 
 import org.lazywizard.console.CustomConsoleListeners.ConsoleCampaignListener;
 import org.lazywizard.console.CustomConsoleListeners.ConsoleCombatListener;
+import org.apache.log4j.Logger;
 import org.lazywizard.console.BaseCommand.CommandContext;
 
 import com.fs.starfarer.api.Global;
@@ -26,6 +27,7 @@ public class CommandEnabledCustomConsoleWindow extends CustomConsoleWindow {
     private int historyIndex = -1;
     private String currentInput = "";
 
+    private static Logger log; 
 
     public CommandEnabledCustomConsoleWindow() {
         super();
@@ -88,9 +90,15 @@ public class CommandEnabledCustomConsoleWindow extends CustomConsoleWindow {
                     if (inputText.trim().isEmpty()) {
                         StringBuilder sb = new StringBuilder(inputText);
                         int caretPos = inputField.getCaretPosition();
-                        sb.insert(caretPos, '\t');
-                        inputField.setText(sb.toString());
-                        inputField.setCaretPosition(caretPos + 1);
+
+                        if (e.isShiftDown()) {
+                            inputField.setCaretPosition(caretPos - 1);
+                        } else {
+                            sb.insert(caretPos, '\t');
+                            inputField.setText(sb.toString());
+                            inputField.setCaretPosition(caretPos + 1);
+                        }
+
                         e.consume();
                         return;
                     }

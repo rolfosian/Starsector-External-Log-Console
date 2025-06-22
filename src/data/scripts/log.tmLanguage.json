@@ -9,13 +9,8 @@
   "scopeName": "text.log",
   "patterns": [
     {
-      "match": "(?<=org\\.lazywizard\\.console\\.Console\\s*-)\\s*([\\s\\S]*)",
-      "name" : "lw_console",
-      "captures": {
-        "1": {
-          "name": "lw_console"
-        }
-      }
+      "match": "org\\.lazywizard\\.console\\.Console\\s*-\\s*([\\s\\S]*)",
+      "name" : "lw_console"
     },
     {
       "match": "\\b(Trace)\\b:",
@@ -26,7 +21,7 @@
       "name": "comment log.verbose"
     },
     {
-      "match": "(?<=^[\\s\\d]*)\\bV\\b",
+      "match": "^[\\s\\d]*\\bV\\b",
       "name": "comment log.verbose"
     },
     {
@@ -38,7 +33,7 @@
       "name": "markup.changed log.debug"
     },
     {
-      "match": "(?<=^[\\s\\d]*)\\bD\\b",
+      "match": "^[\\s\\d]*\\bD\\b",
       "name": "markup.changed log.debug"
     },
     {
@@ -50,7 +45,7 @@
       "name": "markup.inserted log.info"
     },
     {
-      "match": "(?<=^[\\s\\d]*)\\bI\\b",
+      "match": "^[\\s\\d]*\\bI\\b",
       "name": "markup.inserted log.info"
     },
     {
@@ -62,7 +57,7 @@
       "name": "markup.deleted log.warning"
     },
     {
-      "match": "(?<=^[\\s\\d]*)\\bW\\b",
+      "match": "^[\\s\\d]*\\bW\\b",
       "name": "markup.deleted log.warning"
     },
     {
@@ -74,7 +69,7 @@
       "name": "string.regexp, strong log.error"
     },
     {
-      "match": "(?<=^[\\s\\d]*)\\bE\\b",
+      "match": "^[\\s\\d]*\\bE\\b",
       "name": "string.regexp, strong log.error"
     },
     {
