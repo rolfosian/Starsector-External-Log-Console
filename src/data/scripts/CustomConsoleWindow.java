@@ -3,8 +3,6 @@ package data.scripts;
 import org.apache.log4j.Logger;
 import org.apache.log4j.PatternLayout;
 
-import com.fs.starfarer.campaign.ui.d;
-
 import java.awt.Color;
 import java.awt.Component;
 import java.awt.Container;
@@ -12,7 +10,6 @@ import java.awt.Font;
 import java.awt.Toolkit;
 
 import javax.swing.*;
-import javax.swing.border.BevelBorder;
 import javax.swing.text.BadLocationException;
 import javax.swing.text.Style;
 import javax.swing.text.StyleConstants;
@@ -36,6 +33,8 @@ import java.util.HashSet;
 import java.util.Arrays;
 import java.util.Set;
 import org.apache.log4j.spi.LoggingEvent;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 public class CustomConsoleWindow extends JFrame {
     public static final Logger log = Logger.getLogger(TextMateGrammar.class);
@@ -63,6 +62,8 @@ public class CustomConsoleWindow extends JFrame {
 
     private Style infoStyle, warnStyle, errorStyle, defaultStyle;
 
+    private final ExecutorService syntaxHighlightExecutor = Executors.newSingleThreadExecutor();
+
     private static class TextSegment {
         int start;
         int length;
@@ -80,7 +81,8 @@ public class CustomConsoleWindow extends JFrame {
     private final java.util.List<TextSegment> segments = new java.util.ArrayList<>();
     private Map<Integer, Style> searchHighlights = new HashMap<>();
 
-    private final int MAX_LOG_ENTRIES = 5000;
+    private final int MAX_LOG_ENTRIES = 33000;
+    private final int MAX_LINES = 33000;
     private List<LoggingEvent> logEvents = new ArrayList<>();
 
     public CustomConsoleWindow() {
@@ -210,7 +212,35 @@ public class CustomConsoleWindow extends JFrame {
     }
 
     public void appendText(String text) {
-        appendText(text, false);
+        try {
+            Document doc = textPane.getDocument();
+            JScrollBar verticalScrollBar = ((JScrollPane) textPane.getParent().getParent()).getVerticalScrollBar();
+            boolean atBottom = verticalScrollBar.getValue() + verticalScrollBar.getVisibleAmount() >= verticalScrollBar.getMaximum() - 20;
+    
+            // Check line count and remove lines if necessary
+            int lineCount = getLineCount();
+            if (lineCount >= MAX_LINES) {
+                removeExcessLines(lineCount - MAX_LINES + 1);
+            }
+    
+            int start = doc.getLength();
+            
+            // First, add the text with default styling immediately
+            doc.insertString(start, text, defaultStyle);
+            
+            // Create a segment for tracking
+            TextSegment segment = new TextSegment(start, text.length(), defaultStyle);
+            segments.add(segment);
+
+            if (atBottom) {
+                textPane.setCaretPosition(doc.getLength());
+            }
+            
+            // Apply syntax highlighting in background thread
+            applySyntaxHighlightingAsync(text, start, segment);
+        } catch (BadLocationException e) {
+            log.error(e);
+        }
     }
 
     public void appendText(LoggingEvent event) {
@@ -220,63 +250,37 @@ public class CustomConsoleWindow extends JFrame {
         logEvents.add(event);
 
         String message = this.appender.getLayout().format(event);
-        appendText(message, false);
+        appendText(message);
     }
 
-    private void appendText(String text, boolean isRerender) {
-        try {
-            Document doc = textPane.getDocument();
-            JScrollBar verticalScrollBar = ((JScrollPane) textPane.getParent().getParent()).getVerticalScrollBar();
-            boolean atBottom = verticalScrollBar.getValue() + verticalScrollBar.getVisibleAmount() >= verticalScrollBar.getMaximum() - 20;
-    
-            int start = doc.getLength();
-            applySyntaxHighlighting(text, start);
-
-            if (atBottom) {
-                textPane.setCaretPosition(doc.getLength());
-            }
-        } catch (BadLocationException e) {
-            log.error(e);
-        }
-    }
-    
-    public void clearConsole() {
-        SwingUtilities.invokeLater(() -> {
+    private void applySyntaxHighlightingAsync(String text, int startOffset, TextSegment segment) {
+        syntaxHighlightExecutor.submit(() -> {
             try {
-                doc.remove(0, doc.getLength());
-                segments.clear();
-                searchHighlights.clear();
-                matchPositions.clear();
-                currentMatchIndex = 0;
-                updateMatchCounter();
-            } catch (BadLocationException e) {
-                log.error(e);
+                List<TextMateGrammar.MatchResult> matches = grammar.parseLine(text);
+                matches.sort((a, b) -> Integer.compare(a.start, b.start));
+                
+                // Apply highlighting on EDT to avoid threading issues
+                SwingUtilities.invokeLater(() -> {
+                    try {
+                        for (TextMateGrammar.MatchResult match : matches) {
+                            Style style = createStyleFromScope(match.scope);
+                            if (style != null) {
+                                int absoluteStart = startOffset + match.start;
+                                doc.setCharacterAttributes(absoluteStart, match.length, style, true);
+                                
+                                for (int i = 0; i < match.length; i++) {
+                                    segment.syntaxHighlights.put(absoluteStart + i, style);
+                                }
+                            }
+                        }
+                    } catch (Exception e) {
+                        log.error("Error applying syntax highlighting: " + e.getMessage(), e);
+                    }
+                });
+            } catch (Exception e) {
+                log.error("Error in syntax highlighting thread: " + e.getMessage(), e);
             }
         });
-    }
-    
-    private void applySyntaxHighlighting(String text, int startOffset) throws BadLocationException {
-        doc.insertString(startOffset, text, defaultStyle);
-        
-        TextSegment segment = new TextSegment(startOffset, text.length(), defaultStyle);
-        
-        List<TextMateGrammar.MatchResult> matches = grammar.parseLine(text);
-        
-        matches.sort((a, b) -> Integer.compare(a.start, b.start));
-        
-        for (TextMateGrammar.MatchResult match : matches) {
-            Style style = createStyleFromScope(match.scope);
-            if (style != null) {
-                int absoluteStart = startOffset + match.start;
-                doc.setCharacterAttributes(absoluteStart, match.length, style, true);
-                
-                for (int i = 0; i < match.length; i++) {
-                    segment.syntaxHighlights.put(absoluteStart + i, style);
-                }
-            }
-        }
-        
-        segments.add(segment);
     }
     
     private Style createStyleFromScope(String scope) {
@@ -522,9 +526,10 @@ public class CustomConsoleWindow extends JFrame {
 
     private void rerenderLogMessages() {
         textPane.setText("");
+        segments.clear();
         for (LoggingEvent event : logEvents) {
             String message = this.appender.getLayout().format(event);
-            appendText(message, false);
+            appendText(message);
         }
     }
 
@@ -590,6 +595,13 @@ public class CustomConsoleWindow extends JFrame {
                 }
             });
         }
+
+        JMenuItem clearItem = new JMenuItem("Clear");
+        clearItem.addActionListener(e -> this.clearConsole());
+        clearItem.setBackground(new Color(30, 30, 30));
+        clearItem.setForeground(Color.WHITE);
+        clearItem.setFont(new Font("Consolas", Font.PLAIN, 14));
+        textPanePopupMenu.add(clearItem);
 
         textPanePopupMenu.addSeparator();
 
@@ -871,5 +883,122 @@ public class CustomConsoleWindow extends JFrame {
             textPane.setSelectionEnd(position + searchText.length());
             updateMatchCounter();
         }
+    }
+
+    public void clearConsole() {
+        SwingUtilities.invokeLater(() -> {
+            try {
+                doc.remove(0, doc.getLength());
+                segments.clear();
+                searchHighlights.clear();
+                matchPositions.clear();
+                currentMatchIndex = 0;
+                updateMatchCounter();
+            } catch (BadLocationException e) {
+                log.error(e);
+            }
+        });
+    }
+
+    public void dispose() {
+        if (syntaxHighlightExecutor != null && !syntaxHighlightExecutor.isShutdown()) {
+            syntaxHighlightExecutor.shutdown();
+        }
+        super.dispose();
+    }
+
+    private int getLineCount() {
+        try {
+            String text = doc.getText(0, doc.getLength());
+            return text.split("\n", -1).length;
+        } catch (BadLocationException e) {
+            return 0;
+        }
+    }
+    
+    private void removeExcessLines(int linesToRemove) {
+        try {
+            String text = doc.getText(0, doc.getLength());
+            String[] lines = text.split("\n", -1);
+            
+            if (lines.length <= linesToRemove) {
+                // If we need to remove more lines than we have, just clear everything
+                doc.remove(0, doc.getLength());
+                segments.clear();
+                return;
+            }
+            
+            // Calculate the position where we need to start keeping text
+            final int startPosition = calculateStartPosition(lines, linesToRemove);
+            
+            // Remove the text and update segments
+            doc.remove(0, startPosition);
+            
+            // Update segments - remove segments that are completely before the removal point
+            segments.removeIf(segment -> segment.start + segment.length <= startPosition);
+            
+            // Adjust start positions of remaining segments
+            for (TextSegment segment : segments) {
+                segment.start -= startPosition;
+            }
+            
+            // Update search highlights
+            Map<Integer, Style> newSearchHighlights = new HashMap<>();
+            for (Map.Entry<Integer, Style> entry : searchHighlights.entrySet()) {
+                int position = entry.getKey();
+                if (position >= startPosition) {
+                    newSearchHighlights.put(position - startPosition, entry.getValue());
+                }
+            }
+            searchHighlights = newSearchHighlights;
+            
+            // Update match positions
+            for (int i = 0; i < matchPositions.size(); i++) {
+                int position = matchPositions.get(i);
+                if (position >= startPosition) {
+                    matchPositions.set(i, position - startPosition);
+                } else {
+                    matchPositions.remove(i);
+                    i--;
+                }
+            }
+            
+        } catch (Exception e) {
+            log.error("Error removing excess lines: " + e.getMessage(), e);
+        }
+    }
+    
+    private int calculateStartPosition(String[] lines, int linesToRemove) {
+        int startPosition = 0;
+        int lineCount = 0;
+        for (int i = 0; i < lines.length && lineCount < linesToRemove; i++) {
+            startPosition += lines[i].length() + 1; // +1 for the newline
+            lineCount++;
+        }
+        return startPosition;
+    }
+    
+    private void applySyntaxHighlighting(String text, int startOffset) throws BadLocationException {
+        doc.insertString(startOffset, text, defaultStyle);
+        
+        TextSegment segment = new TextSegment(startOffset, text.length(), defaultStyle);
+        
+        List<TextMateGrammar.MatchResult> matches = grammar.parseLine(text);
+        
+        matches.sort((a, b) -> Integer.compare(a.start, b.start));
+        
+        for (TextMateGrammar.MatchResult match : matches) {
+            Style style = createStyleFromScope(match.scope);
+            if (style != null) {
+                int absoluteStart = startOffset + match.start;
+                doc.setCharacterAttributes(absoluteStart, match.length, style, true);
+                
+                for (int i = 0; i < match.length; i++) {
+                    segment.syntaxHighlights.put(absoluteStart + i, style);
+                }
+            }
+        }
+        
+        segments.add(segment);
     }
 }

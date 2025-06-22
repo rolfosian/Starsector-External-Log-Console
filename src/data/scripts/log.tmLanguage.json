@@ -9,6 +9,15 @@
   "scopeName": "text.log",
   "patterns": [
     {
+      "match": "(?<=org\\.lazywizard\\.console\\.Console\\s*-)\\s*([\\s\\S]*)",
+      "name" : "lw_console",
+      "captures": {
+        "1": {
+          "name": "lw_console"
+        }
+      }
+    },
+    {
       "match": "\\b(Trace)\\b:",
       "name": "comment log.verbose"
     },
@@ -124,10 +133,6 @@
     {
       "match": "(?<![\\w/\\\\])([\\w-]+\\.)+([\\w-])+(?![\\w/\\\\])",
       "name": "constant.language log.constant"
-    },
-    {
-      "match": "(?<=org\\.lazywizard\\.console\\.Console\\s*-)\\s*(.*)",
-      "name" : "lw_console"
     }
   ]
 }
