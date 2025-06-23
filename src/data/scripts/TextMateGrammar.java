@@ -190,6 +190,7 @@ public class TextMateGrammar {
     
     
     public void parseLine(String line, CustomConsoleWindow console, TextSegment segment, int startOffset) {
+        List<int[]> styledRanges = new ArrayList<>();
         for (CachedPattern cp : cachedPatternList) {
             if (cp.pattern == null) continue;
 
@@ -198,6 +199,9 @@ public class TextMateGrammar {
                 while (m.find()) {
                     int start = m.start();
                     int end = m.end();
+
+                    if(isOverlapping(start, end, styledRanges)) continue;
+                    styledRanges.add(new int[]{start,end});
 
                     MatchResult match = new MatchResult(start, end - start, cp.scope, m.group());
                     Style style = console.createStyleFromScope(cp.scope);
@@ -218,7 +222,10 @@ public class TextMateGrammar {
                     Matcher endM = cp.endPattern.matcher(remaining);
 
                     if (endM.find()) {
+                        int start = m.start();
                         int endEnd = beginEnd + endM.end();
+                        if(isOverlapping(start, endEnd, styledRanges)) continue;
+                        styledRanges.add(new int[]{start,endEnd});
                         MatchResult match = new MatchResult(m.start(), endEnd - m.start(), cp.scope, line.substring(m.start(), endEnd));
                         Style style = console.createStyleFromScope(cp.scope);
 
@@ -234,6 +241,15 @@ public class TextMateGrammar {
             }
         }    
         return;
+    }
+
+    private boolean isOverlapping(int start, int end, List<int[]> styledRanges) {
+        for (int[] range : styledRanges) {
+            if (start < range[1] && end > range[0]) {
+                return true;
+            }
+        }
+        return false;
     }
 
     public StyleInfo getStyleForScope(String scope) {

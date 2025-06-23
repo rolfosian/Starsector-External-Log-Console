@@ -13,6 +13,22 @@
       "name" : "lw_console"
     },
     {
+      "match": "\\b([a-zA-Z.]*Exception)\\b|\\n[\\t ]*at[\\t ].*",
+      "name": "log.exception, emphasis"
+    },
+    {
+      "match": "\"[^\"]*\"",
+      "name": "string log.string"
+    },
+    {
+      "match": "(?<![\\w])'[^']*'",
+      "name": "string log.string"
+    },
+    {
+      "match": "(?<![\\w/\\\\])([\\w-]+\\.)+([\\w-])+(?![\\w/\\\\])",
+      "name": "constant.language log.constant"
+    },
+    {
       "match": "\\b(Trace)\\b:",
       "name": "comment log.verbose"
     },
@@ -93,6 +109,10 @@
       "name": "constant.language log.constant"
     },
     {
+      "match": "\\b([a-zA-Z_][a-zA-Z0-9_]*)\\s*\\(",
+      "name": "methodname"
+    },
+    {
       "match": "\\b([0-9a-fA-F]{2,}[:-])+[0-9a-fA-F]{2,}+\\b",
       "name": "constant.language log.constant"
     },
@@ -101,32 +121,19 @@
       "name": "constant.language log.constant"
     },
     {
+      "match": "\\b(Class|Float|interface|String|CharSequence|Stream|IntStream|Optional|Integer|Object)(\\[\\])?\\b",
+      "name": "commontypes"
+    },
+    {
+      "match": "\\b(void|class|boolean|int|byte|char|double|float|long|short)(\\[\\])?\\b",
+      "name": "primitivetypes"
+    },
+    {
       "match": "\\b(0x[a-fA-F0-9]+)\\b",
       "name": "constant.language log.constant"
     },
     {
-      "match": "\"[^\"]*\"",
-      "name": "string log.string"
-    },
-    {
-      "match": "(?<![\\w])'[^']*'",
-      "name": "string log.string"
-    },
-    {
-      "match": "\\b([a-zA-Z.]*Exception)\\b",
-      "name": "string.regexp, emphasis log.exception"
-    },
-    {
-      "begin": "^[\\t ]*at[\\t ]",
-      "end": "$",
-      "name": "string.regexp, emphasis log.exceptiontype"
-    },
-    {
       "match": "\\b[a-z]+://\\S+\\b/?",
-      "name": "constant.language log.constant"
-    },
-    {
-      "match": "(?<![\\w/\\\\])([\\w-]+\\.)+([\\w-])+(?![\\w/\\\\])",
       "name": "constant.language log.constant"
     }
   ]

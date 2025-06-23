@@ -474,10 +474,10 @@ public class CustomConsoleWindow extends JFrame {
     }
 
     private CustomConsoleAppender appender;
-    private String currentPatternLayoutString = "%r [%t] %-5p %c - %m%n";
+    private String currentPatternLayoutString = "%d{HH:mm:ss} [%t] %-5p %c - %m%n";
 
     private String[] layoutParamOrder = new String[] {
-        "%r",
+        "%d{HH:mm:ss}",
         "[%t]",
         "%-5p",
         "%c"
@@ -492,7 +492,7 @@ public class CustomConsoleWindow extends JFrame {
                 sb.append(param).append(" ");
             }
         }
-        sb.append("- %m%n%");
+        sb.append("- %m%n");
         currentPatternLayoutString = sb.toString();
     }
 
@@ -597,22 +597,22 @@ public class CustomConsoleWindow extends JFrame {
 
         AbstractButton[] items = new AbstractButton[4];
         
-        JCheckBoxMenuItem showlogTimeToggle = new JCheckBoxMenuItem("Show log time");
+        JCheckBoxMenuItem showlogTimeToggle = new JCheckBoxMenuItem("Show Time");
         showlogTimeToggle.setSelected(true);
         showlogTimeToggle.addActionListener(e -> {
             boolean on = showlogTimeToggle.isSelected();
 
             if (on) {
-                insertLayoutParam("%r");
+                insertLayoutParam("%d{HH:mm:ss}");
             } else {
-                removeLayoutParam("%r");
+                removeLayoutParam("%d{HH:mm:ss}");
             }
             setPatternLayout();
             rerenderLogMessages();
         });
         items[0] = showlogTimeToggle;
 
-        JCheckBoxMenuItem showlogThreadToggle = new JCheckBoxMenuItem("Show log thread");
+        JCheckBoxMenuItem showlogThreadToggle = new JCheckBoxMenuItem("Show Thread");
         showlogThreadToggle.setSelected(true);
         showlogThreadToggle.addActionListener(e -> {
             boolean on = showlogThreadToggle.isSelected();
@@ -627,7 +627,7 @@ public class CustomConsoleWindow extends JFrame {
         });
         items[1] = showlogThreadToggle;
 
-        JCheckBoxMenuItem showLogLevelToggle = new JCheckBoxMenuItem("Show log level");
+        JCheckBoxMenuItem showLogLevelToggle = new JCheckBoxMenuItem("Show Level");
         showLogLevelToggle.setSelected(true);
         showLogLevelToggle.addActionListener(e -> {
             boolean on = showLogLevelToggle.isSelected();
@@ -642,7 +642,7 @@ public class CustomConsoleWindow extends JFrame {
         });
         items[2] = showLogLevelToggle;
 
-        JCheckBoxMenuItem showCategoryToggle = new JCheckBoxMenuItem("Show log category (class)");
+        JCheckBoxMenuItem showCategoryToggle = new JCheckBoxMenuItem("Show Category");
         showCategoryToggle.setSelected(true);
         showCategoryToggle.addActionListener(e -> {
             boolean on = showCategoryToggle.isSelected();

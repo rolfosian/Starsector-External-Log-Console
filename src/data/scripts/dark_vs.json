@@ -38,6 +38,24 @@
       }
     },
     {
+      "scope" : "primitivetypes",
+      "settings" : {
+        "foreground" : "#3EC8B0"
+      }
+    },
+    {
+      "scope" : "commontypes",
+      "settings" : {
+        "foreground" : "#83B0E9"
+      }
+    },
+    {
+      "scope" : "methodname",
+      "settings" : {
+        "foreground": "#DCDBAC"
+      }
+    },
+    {
       "scope": [
         "meta.embedded",
         "source.groovy.embedded",

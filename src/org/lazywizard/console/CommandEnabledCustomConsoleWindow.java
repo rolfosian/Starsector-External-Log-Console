@@ -63,11 +63,9 @@ public class CommandEnabledCustomConsoleWindow extends CustomConsoleWindow {
             }
         });
 
-        // Add key listener for history navigation
         inputField.addKeyListener(new KeyListener() {
             @Override
             public void keyTyped(KeyEvent e) {
-                // Handle tab key in keyTyped as well to ensure complete override
                 if (e.getKeyChar() == '\t') {
                     e.consume();
                 }
@@ -184,8 +182,8 @@ public class CommandEnabledCustomConsoleWindow extends CustomConsoleWindow {
         });
 
         inputField.setBackground(new Color(30, 30, 30));
-        inputField.setForeground(Color.WHITE);
-        inputField.setCaretColor(Color.WHITE);
+        inputField.setForeground(new Color(1, 223, 224));
+        inputField.setCaretColor(new Color(1, 223, 224));
         inputField.setBorder(BorderFactory.createCompoundBorder(
             BorderFactory.createLineBorder(new Color(100, 100, 100)),
             BorderFactory.createEmptyBorder(2, 5, 2, 5)
@@ -194,15 +192,31 @@ public class CommandEnabledCustomConsoleWindow extends CustomConsoleWindow {
         this.getContentPane().add(inputField, BorderLayout.SOUTH);
 
         KeyboardFocusManager.getCurrentKeyboardFocusManager().addKeyEventDispatcher(e -> {
-            if (e.getID() == KeyEvent.KEY_PRESSED && e.isControlDown() && e.getKeyCode() == KeyEvent.VK_V) {
-                if (!inputField.hasFocus()) {
+            if (e.getID() == KeyEvent.KEY_PRESSED && !inputField.hasFocus()) {
+                if (e.isControlDown() && e.getKeyCode() == KeyEvent.VK_V) {
                     inputField.requestFocus();
                     inputField.paste();
                     e.consume();
                     return false;
                 }
-            }
-            if (e.getID() == KeyEvent.KEY_TYPED && !Keyboard.isKeyDown(Keyboard.KEY_LCONTROL)) {
+
+                switch(e.getKeyCode()) {
+                    case KeyEvent.VK_UP:
+                        inputField.requestFocus();
+                        navigateHistoryUp();
+                        e.consume();
+                        break;
+                    case KeyEvent.VK_DOWN:
+                        inputField.requestFocus();
+                        navigateHistoryDown();
+                        e.consume();
+                        break;
+                    default:
+                        break;
+                }
+                return false;
+
+            } else if (e.getID() == KeyEvent.KEY_TYPED && !e.isControlDown()) {
                 if (!inputField.hasFocus()) {
                     char ch = e.getKeyChar();
 
@@ -221,6 +235,7 @@ public class CommandEnabledCustomConsoleWindow extends CustomConsoleWindow {
                 }
             }
             return false;
+
         });
 
         this.revalidate();
@@ -284,6 +299,5 @@ public class CommandEnabledCustomConsoleWindow extends CustomConsoleWindow {
             listener.init(Global.getCombatEngine());
             Console.parseInput(command, listener.getContext());
         }
-        
     }
 }
