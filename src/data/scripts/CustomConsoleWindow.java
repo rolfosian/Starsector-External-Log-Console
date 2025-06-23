@@ -7,6 +7,10 @@ import java.awt.Color;
 import java.awt.Component;
 import java.awt.Container;
 import java.awt.Font;
+import java.awt.Graphics;
+import java.awt.GraphicsEnvironment;
+import java.awt.Image;
+import java.awt.Point;
 import java.awt.Toolkit;
 
 import javax.swing.*;
@@ -25,20 +29,15 @@ import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
-import java.util.List;
-import java.util.Map;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.Arrays;
-import java.util.Set;
+import java.io.InputStream;
+import java.util.*;
 import org.apache.log4j.spi.LoggingEvent;
 
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 public class CustomConsoleWindow extends JFrame {
-    public static final Logger log = Logger.getLogger(TextMateGrammar.class);
+    public static final Logger log = Logger.getLogger(CustomConsoleWindow.class);
     
     private static TextMateGrammar grammar;
     
@@ -50,13 +49,15 @@ public class CustomConsoleWindow extends JFrame {
         }
     }
 
-    private JTextPane textPane;
+    protected JTextPane textPane;
     protected JTextField inputField = null;
+    protected int textFontSize = 14;
+    protected JScrollPane scrollPane;
     private StyledDocument doc;
     private JDialog searchDialog;
     private JTextField searchField;
     private int currentMatchIndex = 0;
-    private java.util.List<Integer> matchPositions = new java.util.ArrayList<>();
+    private List<Integer> matchPositions = new ArrayList<>();
     private JLabel matchCounterLabel;
     private Style highlightStyle;
     private JCheckBox caseSensitiveCheckBox;
@@ -80,7 +81,7 @@ public class CustomConsoleWindow extends JFrame {
         }
     }
     
-    private final java.util.List<TextSegment> segments = new java.util.ArrayList<>();
+    private final List<TextSegment> segments = new ArrayList<>();
     private Map<Integer, Style> searchHighlights = new HashMap<>();
 
     private final int MAX_LOG_ENTRIES = 33000;
@@ -102,13 +103,14 @@ public class CustomConsoleWindow extends JFrame {
         textPane = new JTextPane();
         textPane.setEditable(false);
         textPane.setBackground(new Color(30, 30, 30));
-        textPane.setFont(new Font("Consolas", Font.PLAIN, 14));
+        textPane.setFont(new Font("Consolas", Font.PLAIN, textFontSize));
+        textPane.setBorder(BorderFactory.createEmptyBorder(2, 5, 2, 5));
 
         doc = textPane.getStyledDocument();
         defineStyles(doc);
         defineHighlightStyle();
 
-        JScrollPane scrollPane = new JScrollPane(textPane);
+        scrollPane = new JScrollPane(textPane);
         scrollPane.getViewport().setBackground(Color.BLACK);
         
         scrollPane.getVerticalScrollBar().setUI(new javax.swing.plaf.basic.BasicScrollBarUI() {
@@ -515,12 +517,49 @@ public class CustomConsoleWindow extends JFrame {
             textPane.setText("");
             segments.clear();
 
-            for (int i = logEvents.size() - 1; i >= 0; i--) {
+            List<String> messages = new ArrayList<>();
+            for (int i = 0; i < logEvents.size(); i++) {
                 LoggingEvent event = logEvents.get(i);
                 String message = this.appender.getLayout().format(event);
-                appendText(message);
+                messages.add(message);
+                appendTextNoHighlight(message);
+            }
+
+            int offset = 0;
+            for (int i = 0; i < messages.size(); i++) {
+                offset += messages.get(i).length();
+            }
+            for (int i = messages.size() - 1; i >= 0; i--) {
+                String message = messages.get(i);
+                offset -= message.length();
+                applySyntaxHighlightingAsync(message, offset, segments.get(i));
             }
         });
+    }
+
+    public void appendTextNoHighlight(String text) {
+        try {
+            Document doc = textPane.getDocument();
+            JScrollBar verticalScrollBar = ((JScrollPane) textPane.getParent().getParent()).getVerticalScrollBar();
+            boolean atBottom = verticalScrollBar.getValue() + verticalScrollBar.getVisibleAmount() >= verticalScrollBar.getMaximum() - 20;
+
+            int lineCount = getLineCount();
+            if (lineCount >= MAX_LINES) {
+                removeExcessLines(lineCount - MAX_LINES + 1);
+            }
+
+            int start = doc.getLength();
+            doc.insertString(start, text, defaultStyle);
+
+            TextSegment segment = new TextSegment(start, text.length(), defaultStyle);
+            segments.add(segment);
+
+            if (atBottom) {
+                textPane.setCaretPosition(doc.getLength());
+            }
+        } catch (BadLocationException e) {
+            log.error(e);
+        }
     }
 
     private void setupRightClickMenus() {
@@ -586,7 +625,7 @@ public class CustomConsoleWindow extends JFrame {
             });
         }
 
-        JMenuItem clearItem = new JMenuItem("Clear");
+        JMenuItem clearItem = new JMenuItem("Clear Console");
         clearItem.addActionListener(e -> this.clearConsole());
         clearItem.setBackground(new Color(30, 30, 30));
         clearItem.setForeground(Color.WHITE);
@@ -597,64 +636,16 @@ public class CustomConsoleWindow extends JFrame {
 
         AbstractButton[] items = new AbstractButton[4];
         
-        JCheckBoxMenuItem showlogTimeToggle = new JCheckBoxMenuItem("Show Time");
-        showlogTimeToggle.setSelected(true);
-        showlogTimeToggle.addActionListener(e -> {
-            boolean on = showlogTimeToggle.isSelected();
-
-            if (on) {
-                insertLayoutParam("%d{HH:mm:ss}");
-            } else {
-                removeLayoutParam("%d{HH:mm:ss}");
-            }
-            setPatternLayout();
-            rerenderLogMessages();
-        });
+        CustomCheckBoxMenuItem showlogTimeToggle = new CustomCheckBoxMenuItem("Show", "Hide", "Time","%d{HH:mm:ss}", "graphics/icons/campaign/ttcr_success.png", "graphics/icons/campaign/ttcr_event.png");
         items[0] = showlogTimeToggle;
 
-        JCheckBoxMenuItem showlogThreadToggle = new JCheckBoxMenuItem("Show Thread");
-        showlogThreadToggle.setSelected(true);
-        showlogThreadToggle.addActionListener(e -> {
-            boolean on = showlogThreadToggle.isSelected();
-
-            if (on) {
-                insertLayoutParam("[%t]");
-            } else {
-                removeLayoutParam("[%t]");
-            }
-            setPatternLayout();
-            rerenderLogMessages();
-        });
+        CustomCheckBoxMenuItem showlogThreadToggle = new CustomCheckBoxMenuItem("Show", "Hide", "Thread", "[%t]", "graphics/icons/campaign/ttcr_success.png", "graphics/icons/campaign/ttcr_event.png");
         items[1] = showlogThreadToggle;
 
-        JCheckBoxMenuItem showLogLevelToggle = new JCheckBoxMenuItem("Show Level");
-        showLogLevelToggle.setSelected(true);
-        showLogLevelToggle.addActionListener(e -> {
-            boolean on = showLogLevelToggle.isSelected();
-
-            if (on) {
-                insertLayoutParam("%-5p");
-            } else {
-                removeLayoutParam("%-5p");
-            }
-            setPatternLayout();
-            rerenderLogMessages();
-        });
+        CustomCheckBoxMenuItem showLogLevelToggle = new CustomCheckBoxMenuItem("Show", "Hide", "Level", "%-5p", "graphics/icons/campaign/ttcr_success.png", "graphics/icons/campaign/ttcr_event.png");
         items[2] = showLogLevelToggle;
 
-        JCheckBoxMenuItem showCategoryToggle = new JCheckBoxMenuItem("Show Category");
-        showCategoryToggle.setSelected(true);
-        showCategoryToggle.addActionListener(e -> {
-            boolean on = showCategoryToggle.isSelected();
-
-            if (on) {
-                insertLayoutParam("%c");
-            } else {
-                removeLayoutParam("%c");
-            }
-            setPatternLayout();
-            rerenderLogMessages();
-        });
+        CustomCheckBoxMenuItem showCategoryToggle = new CustomCheckBoxMenuItem("Show", "Hide", "Category", "%c", "graphics/icons/campaign/ttcr_success.png", "graphics/icons/campaign/ttcr_event.png");
         items[3] = showCategoryToggle;
 
         for (AbstractButton item : items) {
@@ -963,5 +954,65 @@ public class CustomConsoleWindow extends JFrame {
             lineCount++;
         }
         return startPosition;
+    }
+
+    protected ImageIcon getIconScaled(float scaleFactor, String imagePath) {
+        ImageIcon icon = new ImageIcon(imagePath);
+        Image img = icon.getImage();
+
+        int width = Math.round(img.getWidth(null) * scaleFactor);
+        int height = Math.round(img.getHeight(null) * scaleFactor);
+
+        Image resized = img.getScaledInstance(width, height, Image.SCALE_SMOOTH);
+        return new ImageIcon(resized);
+    }
+
+    protected class CustomCheckBoxMenuItem extends JMenuItem {
+        private boolean isSelected = true;
+        private ImageIcon onIcon;
+        private ImageIcon offIcon;
+        private String layoutParam;
+        private String onName;
+        private String offName;
+
+        public CustomCheckBoxMenuItem(String offPrefix, String onPrefix, String name, String layoutParam, String offIconPath, String onIconPath) {
+            super(onPrefix + " " + name);
+
+            this.onName = onPrefix + " " + name;
+            this.offName = offPrefix + " " + name;
+            this.layoutParam = layoutParam;
+
+            this.onIcon = getIconScaled(0.33f, onIconPath);
+            this.offIcon = getIconScaled(0.33f, offIconPath);
+            this.setIcon(onIcon);
+
+            this.addActionListener(e -> {
+                this.onClick();
+            });
+        }
+
+        private void onClick() {
+            if (this.isSelected) {
+                this.setSelected(false);
+                this.setText(offName);
+                this.setIcon(offIcon);
+                removeLayoutParam(layoutParam);
+            } else {
+                this.setSelected(true);
+                this.setText(onName);
+                this.setIcon(onIcon);
+                insertLayoutParam(layoutParam);
+            }
+            setPatternLayout();
+            rerenderLogMessages();
+        }
+
+        public boolean isSelected() {
+            return this.isSelected;
+        }
+
+        public void setSelected(boolean selected) {
+            this.isSelected = selected;
+        }
     }
 }

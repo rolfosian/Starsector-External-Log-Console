@@ -10,7 +10,8 @@
   "patterns": [
     {
       "match": "org\\.lazywizard\\.console\\.Console\\s*-\\s*([\\s\\S]*)",
-      "name" : "lw_console"
+      "name": "lw_console",
+      "useGroup": true
     },
     {
       "match": "\\b([a-zA-Z.]*Exception)\\b|\\n[\\t ]*at[\\t ].*",
@@ -26,7 +27,8 @@
     },
     {
       "match": "(?<![\\w/\\\\])([\\w-]+\\.)+([\\w-])+(?![\\w/\\\\])",
-      "name": "constant.language log.constant"
+      "name": "constant.language log.constant",
+      "useGroup": false
     },
     {
       "match": "\\b(Trace)\\b:",
@@ -109,7 +111,7 @@
       "name": "constant.language log.constant"
     },
     {
-      "match": "\\b([a-zA-Z_][a-zA-Z0-9_]*)\\s*\\(",
+      "match": "\\b([a-zA-Z_][a-zA-Z0-9_]*)\\s*(?=\\()",
       "name": "methodname"
     },
     {

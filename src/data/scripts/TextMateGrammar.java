@@ -111,8 +111,9 @@ public class TextMateGrammar {
         Pattern pattern;
         String scope;
         boolean isRange;
-        Pattern endPattern; // Only used for range patterns
+        Pattern endPattern;
         JSONArray nestedPatterns;
+        boolean useGroup = false;
     }
     private static List<CachedPattern> cachedPatternList = new ArrayList<>();
 
@@ -182,6 +183,10 @@ public class TextMateGrammar {
                     cp.nestedPatterns = pattern.getJSONArray("patterns");
                     cachePatternsRecursive(cp.nestedPatterns);
                 }
+
+                if (pattern.has("useGroup")) {
+                    cp.useGroup = pattern.getBoolean("useGroup");
+                }
             } catch (JSONException e) {
                 log.warn("Pattern parsing error at index " + i + ": " + e.getMessage());
             }
@@ -197,8 +202,15 @@ public class TextMateGrammar {
             Matcher m = cp.pattern.matcher(line);
             if (!cp.isRange) {
                 while (m.find()) {
-                    int start = m.start();
-                    int end = m.end();
+                    int start, end;
+                    
+                    if (cp.useGroup && m.groupCount() >= 1 && m.group(1) != null) {
+                        start = m.start(1);
+                        end = m.end(1);
+                    } else {
+                        start = m.start();
+                        end = m.end();
+                    }
 
                     if(isOverlapping(start, end, styledRanges)) continue;
                     styledRanges.add(new int[]{start,end});

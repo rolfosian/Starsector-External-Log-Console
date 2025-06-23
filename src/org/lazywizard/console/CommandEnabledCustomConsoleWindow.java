@@ -10,14 +10,15 @@ import org.lazywizard.console.BaseCommand.CommandContext;
 
 import com.fs.starfarer.api.Global;
 
-import org.lwjgl.input.Keyboard;
-
 import javax.swing.BorderFactory;
 import javax.swing.JTextField;
+import javax.swing.text.DefaultCaret;
+
 import java.awt.BorderLayout;
 import java.awt.Color;
 import java.awt.Font;
 import java.awt.KeyboardFocusManager;
+import java.awt.event.FocusEvent;
 import java.awt.event.KeyEvent;
 import java.awt.event.KeyListener;
 import java.util.*;
@@ -27,13 +28,20 @@ public class CommandEnabledCustomConsoleWindow extends CustomConsoleWindow {
     private int historyIndex = -1;
     private String currentInput = "";
 
-    private static Logger log; 
+    private static Logger log = Global.getLogger(CustomConsoleWindow.class);
 
     public CommandEnabledCustomConsoleWindow() {
         super();
 
         inputField = new JTextField();
         inputField.setFont(new Font("Consolas", Font.PLAIN, 14));
+        inputField.setCaret(new DefaultCaret() {
+            @Override
+            public void focusLost(FocusEvent e) {
+                return;
+            }
+        });
+        inputField.getCaret().setVisible(true);
 
         inputField.setFocusTraversalKeysEnabled(false);
         inputField.addActionListener(e -> {
