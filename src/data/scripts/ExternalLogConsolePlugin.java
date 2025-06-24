@@ -8,10 +8,21 @@ import com.fs.starfarer.api.Global;
 public class ExternalLogConsolePlugin extends BaseModPlugin {
     @Override
     public void onApplicationLoad() {
+
+
         if (Global.getSettings().getModManager().isModEnabled("lw_console")) {
-            new CustomConsoleAppender(new CommandEnabledCustomConsoleWindow().preInit());
+            if (Global.getSettings().getBoolean("externalconsolewindowcolorize")) {
+                new CustomConsoleAppender(new CommandEnabledCustomConsoleWindow().preInit());
+            } else {
+                new CustomConsoleAppenderNoColor(new CommandEnabledCustomConsoleWindow().preInit());
+            }
+            
         } else {
-            new CustomConsoleAppender(new CustomConsoleWindow().preInit());
+            if (Global.getSettings().getBoolean("externalconsolewindowcolorize")) {
+                new CustomConsoleAppender(new CustomConsoleWindow().preInit());
+            } else {
+                new CustomConsoleAppenderNoColor(new CustomConsoleWindow().preInit());
+            }
         }
     }
 }

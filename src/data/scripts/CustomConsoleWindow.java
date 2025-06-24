@@ -319,6 +319,25 @@ public class CustomConsoleWindow extends JFrame {
         }
     }
 
+    public void appendTextNoHighlight(LoggingEvent event) {
+        if (logEvents.size() >= MAX_LOG_ENTRIES) {
+            logEvents.remove(0);
+        }
+        logEvents.add(event);
+
+        String message = this.appender.getLayout().format(event);
+
+        appendTextNoHighlight(message);
+
+        if (event.getThrowableInformation() != null) {
+            String stackTrace = "";
+            for (String str : event.getThrowableInformation().getThrowableStrRep()) {
+                stackTrace += str + "\n";
+            }
+            appendTextNoHighlight(stackTrace);
+        }
+    }
+
     private void applySyntaxHighlightingAsync(String text, int startOffset, TextSegment segment) {
         syntaxHighlightExecutor.submit(() -> {
             grammar.parseLine(text, this, segment, startOffset);

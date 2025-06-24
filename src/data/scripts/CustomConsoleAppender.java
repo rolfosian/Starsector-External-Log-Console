@@ -6,8 +6,8 @@ import org.apache.log4j.AppenderSkeleton;
 import org.apache.log4j.spi.LoggingEvent;
 
 public class CustomConsoleAppender extends AppenderSkeleton {
-    private final CustomConsoleWindow windowInstance;
-    private final ExecutorService appendExecutor;
+    protected final CustomConsoleWindow windowInstance;
+    protected final ExecutorService appendExecutor;
 
     public CustomConsoleAppender(CustomConsoleWindow windowInstance) {
         this.windowInstance = windowInstance;
