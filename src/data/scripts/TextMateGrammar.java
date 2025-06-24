@@ -388,7 +388,7 @@ public class TextMateGrammar {
                                 String remaining = line.substring(beginEnd);
                                 Matcher endMatcher = endPattern.matcher(remaining);
                                 if (endMatcher.find()) {
-                                    int endStart = beginEnd + endMatcher.start();
+                                    // int endStart = beginEnd + endMatcher.start();
                                     int endEnd = beginEnd + endMatcher.end();
                                     MatchResult match = new MatchResult(beginStart, endEnd - beginStart, name, line.substring(beginStart, endEnd));
         
@@ -418,91 +418,5 @@ public class TextMateGrammar {
                 }
             }
         }
-    
-        private void parsePatterns(JSONArray patterns, String line, int startPos, List<MatchResult> results, CustomConsoleWindow console, TextSegment segment, int startOffset) {
-            for (int i = 0; i < patterns.length(); i++) {
-                try {
-                    JSONObject pattern = patterns.getJSONObject(i);
-                    
-                    if (pattern.has("match")) {
-                        String regex = pattern.getString("match");
-                        String name = pattern.optString("name", "");
-                        
-                        String cleanedRegex = cleanRegexPattern(regex);
-                        Pattern p = patternCache.get(cleanedRegex);
-                        
-                        if (p != null) {
-                            Matcher m = p.matcher(line);
-                            
-                            while (m.find()) {
-                                int start = m.start();
-                                int end = m.end();
-                                MatchResult match = new MatchResult(start, end - start, name, m.group());
-                                Style style = console.createStyleFromScope(match.scope);
-                                if (style != null) {
-                                    int absoluteStart = startOffset + match.start;
-                                    console.getDoc().setCharacterAttributes(absoluteStart, match.length, style, true);
-                                    
-                                    for (int j = 0; j < match.length; j++) {
-                                        segment.syntaxHighlights.put(absoluteStart + j, style);
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    
-                    if (pattern.has("begin") && pattern.has("end")) {
-                        String beginRegex = pattern.getString("begin");
-                        String endRegex = pattern.getString("end");
-                        String name = pattern.optString("name", "");
-                        
-                        String cleanedBeginRegex = cleanRegexPattern(beginRegex);
-                        String cleanedEndRegex = cleanRegexPattern(endRegex);
-                        
-                        Pattern beginPattern = patternCache.get(cleanedBeginRegex);
-                        Pattern endPattern = patternCache.get(cleanedEndRegex);
-                        
-                        if (beginPattern != null && endPattern != null) {
-                            Matcher beginMatcher = beginPattern.matcher(line);
-                            while (beginMatcher.find()) {
-                                int beginStart = beginMatcher.start();
-                                int beginEnd = beginMatcher.end();
-                                
-                                String remainingLine = line.substring(beginEnd);
-                                Matcher endMatcher = endPattern.matcher(remainingLine);
-                                
-                                if (endMatcher.find()) {
-                                    int endStart = beginEnd + endMatcher.start();
-                                    int endEnd = beginEnd + endMatcher.end();
-                                    
-                                    MatchResult match = new MatchResult(beginStart, endEnd - beginStart, name, line.substring(beginStart, endEnd));
-    
-                                    try {
-                                        Style style = console.createStyleFromScope(match.scope);
-                                        if (style != null) {
-                                            int absoluteStart = startOffset + match.start;
-                                            console.getDoc().setCharacterAttributes(absoluteStart, match.length, style, true);
-                                            
-                                            for (int j = 0; j < match.length; j++) {
-                                                segment.syntaxHighlights.put(absoluteStart + j, style);
-                                            }
-                                        }
-                                    } catch (Exception e) {
-                                        log.error("Error applying syntax highlighting: " + e.getMessage(), e);
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    
-                    if (pattern.has("patterns")) {
-                        parsePatterns(pattern.getJSONArray("patterns"), line, startPos, results, console, segment, startOffset);
-                    }
-                    
-                } catch (JSONException e) {
-                    log.warn("Error parsing pattern at index " + i + ": " + e.getMessage());
-                }
-            }
-        }    
     }
 }
