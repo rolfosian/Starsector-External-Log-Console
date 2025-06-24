@@ -7,10 +7,7 @@ import java.awt.Color;
 import java.awt.Component;
 import java.awt.Container;
 import java.awt.Font;
-import java.awt.Graphics;
-import java.awt.GraphicsEnvironment;
 import java.awt.Image;
-import java.awt.Point;
 import java.awt.Toolkit;
 
 import javax.swing.*;
@@ -19,6 +16,7 @@ import javax.swing.text.Style;
 import javax.swing.text.StyleConstants;
 import javax.swing.text.StyledDocument;
 import javax.swing.text.Document;
+import javax.swing.JViewport;
 
 import java.awt.BorderLayout;
 import java.awt.event.ActionEvent;
@@ -29,7 +27,7 @@ import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
-import java.io.InputStream;
+
 import java.util.*;
 import org.apache.log4j.spi.LoggingEvent;
 
@@ -64,8 +62,13 @@ public class CustomConsoleWindow extends JFrame {
 
     private Style infoStyle, warnStyle, errorStyle, defaultStyle;
 
-    private ExecutorService syntaxHighlightExecutor = Executors.newSingleThreadExecutor();
+    private final ExecutorService syntaxHighlightExecutor = Executors.newFixedThreadPool(4);
     private final ExecutorService statusExecutor = Executors.newSingleThreadExecutor();
+    private final ExecutorService appendExecutor = Executors.newSingleThreadExecutor();
+
+    public ExecutorService getAppendExecutor() {
+        return this.appendExecutor;
+    }
 
     public static class TextSegment {
         int start;
@@ -88,6 +91,10 @@ public class CustomConsoleWindow extends JFrame {
     private final int MAX_LINES = 33000;
     private List<LoggingEvent> logEvents = new ArrayList<>();
 
+    private volatile boolean wasAtBottom = true;
+    private volatile boolean scrollToBottomPending = false;
+    private final Object scrollLock = new Object();
+    
     public CustomConsoleWindow() {
         setTitle("Log Console");
         setSize(800, 600);
@@ -166,6 +173,14 @@ public class CustomConsoleWindow extends JFrame {
         });
 
         add(scrollPane);
+
+        scrollPane.getVerticalScrollBar().addAdjustmentListener(e -> {
+            JScrollBar scrollBar = (JScrollBar) e.getSource();
+            synchronized (scrollLock) {
+                wasAtBottom = scrollBar.getValue() + scrollBar.getVisibleAmount() >= scrollBar.getMaximum() - 20;
+            }
+        });
+        
         setupSearchDialog();
         setupKeyBindings();
     }
@@ -223,7 +238,10 @@ public class CustomConsoleWindow extends JFrame {
         try {
             Document doc = textPane.getDocument();
             JScrollBar verticalScrollBar = ((JScrollPane) textPane.getParent().getParent()).getVerticalScrollBar();
-            boolean atBottom = verticalScrollBar.getValue() + verticalScrollBar.getVisibleAmount() >= verticalScrollBar.getMaximum() - 20;
+            
+            synchronized (scrollLock) {
+                wasAtBottom = verticalScrollBar.getValue() + verticalScrollBar.getVisibleAmount() >= verticalScrollBar.getMaximum() - 20;
+            }
 
             int lineCount = getLineCount();
             if (lineCount >= MAX_LINES) {
@@ -236,14 +254,50 @@ public class CustomConsoleWindow extends JFrame {
             TextSegment segment = new TextSegment(start, text.length(), defaultStyle);
             segments.add(segment);
 
-            if (atBottom) {
-                textPane.setCaretPosition(doc.getLength());
+            if (wasAtBottom) {
+                scheduleScrollToBottom();
             }
+            
             applySyntaxHighlightingAsync(text, start, segment);
 
         } catch (BadLocationException e) {
             log.error(e);
         }
+    }
+
+    private void scheduleScrollToBottom() {
+        synchronized (scrollLock) {
+            if (!scrollToBottomPending) {
+                scrollToBottomPending = true;
+                SwingUtilities.invokeLater(() -> {
+                    try {
+                        Document doc = textPane.getDocument();
+                        textPane.setCaretPosition(doc.getLength());
+                        
+                        JScrollBar verticalScrollBar = ((JScrollPane) textPane.getParent().getParent()).getVerticalScrollBar();
+                        verticalScrollBar.setValue(verticalScrollBar.getMaximum());
+                        
+                        JViewport viewport = scrollPane.getViewport();
+                        if (viewport != null) {
+                            viewport.setViewPosition(new java.awt.Point(0, doc.getLength()));
+                        }
+                    } catch (Exception e) {
+                        log.error("Error scrolling to bottom: " + e.getMessage(), e);
+                    } finally {
+                        synchronized (scrollLock) {
+                            scrollToBottomPending = false;
+                        }
+                    }
+                });
+            }
+        }
+    }
+
+    public void forceScrollToBottom() {
+        synchronized (scrollLock) {
+            wasAtBottom = true;
+        }
+        scheduleScrollToBottom();
     }
 
     public void appendText(LoggingEvent event) {
@@ -534,6 +588,13 @@ public class CustomConsoleWindow extends JFrame {
                 offset -= message.length();
                 applySyntaxHighlightingAsync(message, offset, segments.get(i));
             }
+
+            SwingUtilities.invokeLater(() -> {
+                synchronized (scrollLock) {
+                    wasAtBottom = true;
+                }
+                scheduleScrollToBottom();
+            });
         });
     }
 
@@ -541,7 +602,10 @@ public class CustomConsoleWindow extends JFrame {
         try {
             Document doc = textPane.getDocument();
             JScrollBar verticalScrollBar = ((JScrollPane) textPane.getParent().getParent()).getVerticalScrollBar();
-            boolean atBottom = verticalScrollBar.getValue() + verticalScrollBar.getVisibleAmount() >= verticalScrollBar.getMaximum() - 20;
+            
+            synchronized (scrollLock) {
+                wasAtBottom = verticalScrollBar.getValue() + verticalScrollBar.getVisibleAmount() >= verticalScrollBar.getMaximum() - 20;
+            }
 
             int lineCount = getLineCount();
             if (lineCount >= MAX_LINES) {
@@ -554,8 +618,8 @@ public class CustomConsoleWindow extends JFrame {
             TextSegment segment = new TextSegment(start, text.length(), defaultStyle);
             segments.add(segment);
 
-            if (atBottom) {
-                textPane.setCaretPosition(doc.getLength());
+            if (wasAtBottom) {
+                scheduleScrollToBottom();
             }
         } catch (BadLocationException e) {
             log.error(e);
@@ -889,6 +953,9 @@ public class CustomConsoleWindow extends JFrame {
         if (statusExecutor != null && !statusExecutor.isShutdown()) {
             statusExecutor.shutdown();
         }
+        if (appendExecutor != null && !appendExecutor.isShutdown()) {
+            appendExecutor.shutdown();
+        }
         super.dispose();
     }
 
@@ -950,7 +1017,7 @@ public class CustomConsoleWindow extends JFrame {
         int startPosition = 0;
         int lineCount = 0;
         for (int i = 0; i < lines.length && lineCount < linesToRemove; i++) {
-            startPosition += lines[i].length() + 1; // +1 for the newline
+            startPosition += lines[i].length() + 1;
             lineCount++;
         }
         return startPosition;
