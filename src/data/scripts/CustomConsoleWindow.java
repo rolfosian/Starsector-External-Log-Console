@@ -87,8 +87,8 @@ public class CustomConsoleWindow extends JFrame {
     private final List<TextSegment> segments = new ArrayList<>();
     private Map<Integer, Style> searchHighlights = new HashMap<>();
 
-    private final int MAX_LOG_ENTRIES = 33000;
-    private final int MAX_LINES = 33000;
+    // private final int MAX_LOG_ENTRIES = 33000;
+    // private final int MAX_LINES = 33000;
     private List<LoggingEvent> logEvents = new ArrayList<>();
 
     private volatile boolean wasAtBottom = true;
@@ -243,10 +243,10 @@ public class CustomConsoleWindow extends JFrame {
                 wasAtBottom = verticalScrollBar.getValue() + verticalScrollBar.getVisibleAmount() >= verticalScrollBar.getMaximum() - 20;
             }
 
-            int lineCount = getLineCount();
-            if (lineCount >= MAX_LINES) {
-                removeExcessLines(lineCount - MAX_LINES + 1);
-            }
+            // int lineCount = getLineCount();
+            // if (lineCount >= MAX_LINES) {
+            //     removeExcessLines(lineCount - MAX_LINES + 1);
+            // }
     
             int start = doc.getLength();
             doc.insertString(start, text, defaultStyle);
@@ -300,10 +300,46 @@ public class CustomConsoleWindow extends JFrame {
         scheduleScrollToBottom();
     }
 
-    public void appendText(LoggingEvent event) {
-        if (logEvents.size() >= MAX_LOG_ENTRIES) {
-            logEvents.remove(0);
+    // this isnt worth the overhead
+    private void removeOldestLogEvent() {
+        LoggingEvent removedEvent = logEvents.remove(0);
+        String removedMessage = this.appender.getLayout().format(removedEvent);
+        try {
+            Document doc = textPane.getDocument();
+            int messageLength = removedMessage.length();
+            doc.remove(0, messageLength);
+            segments.removeIf(segment -> segment.start + segment.length <= messageLength);
+            for (TextSegment segment : segments) {
+                segment.start -= messageLength;
+            }
+            Map<Integer, Style> newSearchHighlights = new HashMap<>();
+            for (Map.Entry<Integer, Style> entry : searchHighlights.entrySet()) {
+                int position = entry.getKey();
+                if (position >= messageLength) {
+                    newSearchHighlights.put(position - messageLength, entry.getValue());
+                }
+            }
+            searchHighlights = newSearchHighlights;
+            for (int i = 0; i < matchPositions.size(); i++) {
+                int position = matchPositions.get(i);
+                if (position >= messageLength) {
+                    matchPositions.set(i, position - messageLength);
+                } else {
+                    matchPositions.remove(i);
+                    i--;
+                }
+            }
+            
+        } catch (BadLocationException e) {
+            log.error("Error removing old log event: " + e.getMessage(), e);
         }
+    }
+
+    public void appendText(LoggingEvent event) {
+        // if (logEvents.size() >= MAX_LOG_ENTRIES) {
+        //     removeOldestLogEvent();
+        // }
+        
         logEvents.add(event);
 
         String message = this.appender.getLayout().format(event);
@@ -320,9 +356,10 @@ public class CustomConsoleWindow extends JFrame {
     }
 
     public void appendTextNoHighlight(LoggingEvent event) {
-        if (logEvents.size() >= MAX_LOG_ENTRIES) {
-            logEvents.remove(0);
-        }
+        // if (logEvents.size() >= MAX_LOG_ENTRIES) {
+        //     removeOldestLogEvent();
+        // }
+        
         logEvents.add(event);
 
         String message = this.appender.getLayout().format(event);
@@ -626,10 +663,10 @@ public class CustomConsoleWindow extends JFrame {
                 wasAtBottom = verticalScrollBar.getValue() + verticalScrollBar.getVisibleAmount() >= verticalScrollBar.getMaximum() - 20;
             }
 
-            int lineCount = getLineCount();
-            if (lineCount >= MAX_LINES) {
-                removeExcessLines(lineCount - MAX_LINES + 1);
-            }
+            // int lineCount = getLineCount();
+            // if (lineCount >= MAX_LINES) {
+            //     removeExcessLines(lineCount - MAX_LINES + 1);
+            // }
 
             int start = doc.getLength();
             doc.insertString(start, text, defaultStyle);
