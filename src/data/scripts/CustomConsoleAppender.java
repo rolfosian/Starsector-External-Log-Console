@@ -17,6 +17,7 @@ public class CustomConsoleAppender extends AppenderSkeleton {
 
     @Override
     public void append(LoggingEvent event) {
+        if (event.getMessage().toString().startsWith("Cleaned buffer for texture")) return;
         appendExecutor.submit(() -> {
             windowInstance.appendText(event);
         });

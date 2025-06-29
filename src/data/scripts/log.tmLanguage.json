@@ -123,11 +123,11 @@
       "name": "constant.language log.constant"
     },
     {
-      "match": "\\b(Class|Float|interface|String|CharSequence|Stream|IntStream|Optional|Integer|Object)(\\[\\])?\\b",
+      "match": "\\b(Class|Float|String|CharSequence|Stream|IntStream|Optional|Integer|Object|Set|List|Map|Collection)(\\[\\])?\\b",
       "name": "commontypes"
     },
     {
-      "match": "\\b(void|class|boolean|int|byte|char|double|float|long|short)(\\[\\])?\\b",
+      "match": "\\b(public|static|interface|protected|package-private|private|void|class|boolean|int|byte|char|double|float|long|short)(\\[\\])?\\b",
       "name": "primitivetypes"
     },
     {

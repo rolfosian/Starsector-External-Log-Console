@@ -10,6 +10,7 @@ public class CustomConsoleAppenderNoColor extends CustomConsoleAppender {
 
     @Override
     public void append(LoggingEvent event) {
+        if (event.getMessage().toString().startsWith("Cleaned buffer for texture")) return;
         appendExecutor.submit(() -> {
             windowInstance.appendTextNoHighlight(event);
         });
