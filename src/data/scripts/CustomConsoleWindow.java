@@ -51,8 +51,9 @@ public class CustomConsoleWindow extends JFrame {
     protected JTextField inputField = null;
     protected int textFontSize = 14;
     protected JScrollPane scrollPane;
+    protected JDialog searchDialog;
+    
     private StyledDocument doc;
-    private JDialog searchDialog;
     private JTextField searchField;
     private int currentMatchIndex = 0;
     private List<Integer> matchPositions = new ArrayList<>();
@@ -1128,6 +1129,7 @@ public class CustomConsoleWindow extends JFrame {
             }
             setPatternLayout();
             rerenderLogMessages();
+            com.fs.graphics.A.ooOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOO s;
         }
 
         public boolean isSelected() {

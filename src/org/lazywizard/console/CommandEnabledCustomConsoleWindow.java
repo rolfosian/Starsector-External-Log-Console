@@ -5,10 +5,18 @@ import data.scripts.TextMateGrammar.StyleInfo;
 
 import org.lazywizard.console.CustomConsoleListeners.ConsoleCampaignListener;
 import org.lazywizard.console.CustomConsoleListeners.ConsoleCombatListener;
+import org.lazywizard.lazylib.CollisionUtils;
+import org.lwjgl.util.vector.Vector2f;
 import org.apache.log4j.Logger;
 import org.lazywizard.console.BaseCommand.CommandContext;
 
 import com.fs.starfarer.api.Global;
+import com.fs.starfarer.api.combat.CombatEngineAPI;
+import com.fs.starfarer.api.combat.CombatEntityAPI;
+import com.fs.starfarer.api.combat.DamageType;
+import com.fs.starfarer.api.combat.ShipAPI;
+import com.fs.starfarer.api.fleet.FleetMemberAPI;
+import com.fs.starfarer.api.fleet.FleetMemberType;
 
 import javax.swing.BorderFactory;
 import javax.swing.JTextField;
@@ -60,6 +68,14 @@ public class CommandEnabledCustomConsoleWindow extends CustomConsoleWindow {
                             log.info(entry.getKey() + " " + entry.getValue().foreground);
                         }
                         inputField.setText("");
+                        return;
+                    case "killall":
+                        if (!Global.getSettings().isInCampaignState()) {
+                            new KillAll().runCommand_();
+                            inputField.setText("");
+                        } else {
+                            inputField.setText("");
+                        }
                         return;
 
                     default:
@@ -201,7 +217,7 @@ public class CommandEnabledCustomConsoleWindow extends CustomConsoleWindow {
 
         KeyboardFocusManager.getCurrentKeyboardFocusManager().addKeyEventDispatcher(e -> {
             if (e.getID() == KeyEvent.KEY_PRESSED && !inputField.hasFocus()) {
-                if (e.isControlDown() && e.getKeyCode() == KeyEvent.VK_V) {
+                if (e.isControlDown() && e.getKeyCode() == KeyEvent.VK_V && !searchDialog.isFocused()) {
                     inputField.requestFocus();
                     inputField.paste();
                     e.consume();
@@ -306,6 +322,60 @@ public class CommandEnabledCustomConsoleWindow extends CustomConsoleWindow {
             ConsoleCombatListener listener = new ConsoleCombatListener();
             listener.init(Global.getCombatEngine());
             Console.parseInput(command, listener.getContext());
+        }
+    }
+
+    public class KillAll implements BaseCommand {
+        public static void killShip(ShipAPI target, boolean creditKillToPlayer) {
+            try {
+                if (target == null) {
+                    return;
+                }
+
+                // Ensure we hit (needed for certain oddly-shaped mod ships)
+                Vector2f hitLoc = target.getLocation();
+                if (!CollisionUtils.isPointWithinBounds(hitLoc, target)) {
+                    if (!target.getAllWeapons().isEmpty()) {
+                        hitLoc = target.getAllWeapons().get(0).getLocation();
+                    }
+                    else if (!target.getEngineController().getShipEngines().isEmpty()) {
+                        hitLoc = target.getEngineController().getShipEngines().get(0).getLocation();
+                    }
+                    else {
+                        Console.showMessage("Couldn't kill " + target.getHullSpec().getHullId());
+                    }
+                }
+
+                // Ensure a kill
+                target.getMutableStats().getHullDamageTakenMult().unmodify();
+                target.getMutableStats().getArmorDamageTakenMult().unmodify();
+                target.setHitpoints(1f);
+                int[] cell = target.getArmorGrid().getCellAtLocation(hitLoc);
+                target.getArmorGrid().setArmorValue(cell[0], cell[1], 0f);
+                Global.getCombatEngine().applyDamage(target, hitLoc, 500_000,
+                        DamageType.OTHER, 500_000, true, false, (creditKillToPlayer
+                                ? Global.getCombatEngine().getPlayerShip() : null));
+            } catch (Throwable e) {
+                log.error(e);
+            }
+        }
+
+        public void runCommand_() {
+            CombatEngineAPI engine = Global.getCombatEngine();
+            engine.setPaused(true);
+            for (ShipAPI target : engine.getShips()) {
+                if (!target.isStation() && !target.isStationModule() && target.isAlive() && !(target.getOwner() == 0 && target.isFrigate())) {
+                    killShip(target, false);
+                    Console.showMessage("Destroyed " + target.getVariant().getFullDesignationWithHullName() + ".");
+                }
+            }
+            engine.setPaused(false);
+            return;
+        }
+
+        @Override
+        public CommandResult runCommand(String args, CommandContext context) {
+            throw new UnsupportedOperationException("Unimplemented method 'runCommand'");
         }
     }
 }
