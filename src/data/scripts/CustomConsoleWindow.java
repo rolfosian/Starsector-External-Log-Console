@@ -187,9 +187,62 @@ public class CustomConsoleWindow extends JFrame {
     }
 
     public CustomConsoleWindow preInit() {
-        setExtendedState(getExtendedState() | java.awt.Frame.MAXIMIZED_BOTH);
-        setVisible(true);
-        setupRightClickMenus();
+        if (!SwingUtilities.isEventDispatchThread()) {
+            SwingUtilities.invokeLater(() -> preInit());
+            return this;
+        }
+        
+        try {
+            setExtendedState(getExtendedState() | java.awt.Frame.MAXIMIZED_BOTH);
+            setVisible(true);
+            setupRightClickMenus();
+            
+            addWindowListener(new WindowAdapter() {
+                @Override
+                public void windowClosing(WindowEvent e) {
+                    setVisible(false);
+                }
+                
+                @Override
+                public void windowClosed(WindowEvent e) {
+                    dispose();
+                }
+                
+                @Override
+                public void windowDeactivated(WindowEvent e) {
+                    if (!isVisible()) {
+                        SwingUtilities.invokeLater(() -> setVisible(true));
+                    }
+                }
+                
+                @Override
+                public void windowActivated(WindowEvent e) {
+                    SwingUtilities.invokeLater(() -> {
+                        if (isVisible()) {
+                            requestFocus();
+                        }
+                    });
+                }
+            });
+            
+            SwingUtilities.invokeLater(() -> {
+                if (!isVisible()) {
+                    setVisible(true);
+                }
+                repaint();
+                
+                SwingUtilities.invokeLater(() -> {
+                    if (!isVisible()) {
+                        setVisible(true);
+                        toFront();
+                    }
+                });
+            });
+            
+        } catch (Exception e) {
+            log.error("Error in preInit: " + e.getMessage(), e);
+        }
+        
         return this;
     }
 
@@ -1004,16 +1057,32 @@ public class CustomConsoleWindow extends JFrame {
     }
 
     public void dispose() {
-        if (syntaxHighlightExecutor != null && !syntaxHighlightExecutor.isShutdown()) {
-            syntaxHighlightExecutor.shutdown();
+        try {
+            if (syntaxHighlightExecutor != null && !syntaxHighlightExecutor.isShutdown()) {
+                syntaxHighlightExecutor.shutdown();
+            }
+            if (statusExecutor != null && !statusExecutor.isShutdown()) {
+                statusExecutor.shutdown();
+            }
+            if (appendExecutor != null && !appendExecutor.isShutdown()) {
+                appendExecutor.shutdown();
+            }
+            
+            clearHighlights();
+            
+            if (appender != null) {
+                try {
+                    org.apache.log4j.Logger.getRootLogger().removeAppender(appender);
+                } catch (Exception e) {
+                    log.error("Error removing appender", e);
+                }
+            }
+            
+        } catch (Exception e) {
+            log.error("Error during dispose: " + e.getMessage(), e);
+        } finally {
+            super.dispose();
         }
-        if (statusExecutor != null && !statusExecutor.isShutdown()) {
-            statusExecutor.shutdown();
-        }
-        if (appendExecutor != null && !appendExecutor.isShutdown()) {
-            appendExecutor.shutdown();
-        }
-        super.dispose();
     }
 
     private int getLineCount() {
